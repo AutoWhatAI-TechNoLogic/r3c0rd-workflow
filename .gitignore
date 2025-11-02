@@ -1,30 +1,3 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-
-# C extensions
-*.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
 # Virtual Environments
 venv/
 env/
@@ -35,17 +8,21 @@ env/
 .env
 *.env
 
-# Output folder
-results/
+# node_modules
+node_modules/
+
+# Build outputs
+dist/
+build/
+.output
+
 
 # IDE / Editor config
 .vscode/
 .idea/
 *.sublime-workspace
+.cursor
 
 # OS-specific files
 .DS_Store
 Thumbs.db
-
-# prd
-.cursor
