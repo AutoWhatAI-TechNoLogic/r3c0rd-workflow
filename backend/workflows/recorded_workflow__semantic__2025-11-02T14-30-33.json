@@ -1,0 +1,52 @@
+{
+  "description": "This workflow guides a user through accessing the settings of a specific repository on GitHub. By navigating to the AutoWhatAI-TechNoLogic organization, the user first locates and selects the 'r3c0rd-workflow' repository, allowing them to manage its settings for configuration or administrative purposes.",
+  "input_schema": [],
+  "name": "Recorded Workflow (Semantic)",
+  "steps": [
+    {
+      "description": "You are going to the AutoWhatAI-TechNoLogic page on GitHub to explore its content.",
+      "tabId": 634312229,
+      "timestamp": 1762093804973,
+      "type": "navigation",
+      "url": "https://github.com/AutoWhatAI-TechNoLogic"
+    },
+    {
+      "description": "You are selecting the \"Repositories\" tab on the AutoWhatAI-TechNoLogic GitHub page to view the projects available there.",
+      "elementTag": "SPAN",
+      "elementText": "Repositories",
+      "frameUrl": "https://github.com/AutoWhatAI-TechNoLogic",
+      "tabId": 634312229,
+      "targetText": "Repositories\n    2",
+      "timestamp": 1762093809554,
+      "type": "click",
+      "url": "https://github.com/AutoWhatAI-TechNoLogic",
+      "xpath": "id(\"repositories-tab\")/span[1]"
+    },
+    {
+      "description": "You are clicking on the \"r3c0rd-workflow\" link to view its details on the AutoWhatAI-TechNoLogic GitHub repositories page.",
+      "elementTag": "SPAN",
+      "elementText": "r3c0rd-workflow",
+      "frameUrl": "https://github.com/orgs/AutoWhatAI-TechNoLogic/repositories",
+      "tabId": 634312229,
+      "targetText": "r3c0rd-workflow",
+      "timestamp": 1762093813719,
+      "type": "click",
+      "url": "https://github.com/orgs/AutoWhatAI-TechNoLogic/repositories",
+      "xpath": "id(\":Rl1d:-list-view-node-:Rfl1d:\")/div[1]/h4[1]/a[1]/span[1]"
+    },
+    {
+      "description": "You are opening the Settings menu on the webpage for the r3c0rd workflow project on GitHub.",
+      "elementTag": "A",
+      "elementText": "Settings",
+      "frameUrl": "https://github.com/AutoWhatAI-TechNoLogic/r3c0rd-workflow",
+      "tabId": 634312229,
+      "targetText": "Settings",
+      "timestamp": 1762093816569,
+      "type": "click",
+      "url": "https://github.com/AutoWhatAI-TechNoLogic/r3c0rd-workflow",
+      "xpath": "id(\"settings-tab\")"
+    }
+  ],
+  "version": "1.0",
+  "workflow_analysis": "Recorded workflow with 4 steps. "
+}

@@ -1,0 +1,72 @@
+{
+  "description": "Workflow description generation failed: Error code: 401 - {'error': {'message': 'Incorrect API key provided: sk-proj-*********************************************************************************************************************************************************SUA%. You can find your API key at https://platform.openai.com/account/api-keys.', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_api_key'}}",
+  "input_schema": [],
+  "name": "Recorded Workflow (Semantic)",
+  "steps": [
+    {
+      "description": "Step description unavailable",
+      "tabId": 634312229,
+      "timestamp": 1762093226550,
+      "type": "navigation",
+      "url": "https://github.com/AutoWhatAI-TechNoLogic/r3c0rd-workflow"
+    },
+    {
+      "description": "Step description unavailable",
+      "elementTag": "SPAN",
+      "elementText": "AutoWhatAI-TechNoLogic",
+      "frameUrl": "https://github.com/AutoWhatAI-TechNoLogic/r3c0rd-workflow",
+      "tabId": 634312229,
+      "targetText": "AutoWhatAI-TechNoLogic",
+      "timestamp": 1762093230863,
+      "type": "click",
+      "url": "https://github.com/AutoWhatAI-TechNoLogic/r3c0rd-workflow",
+      "xpath": "id(\"contextregion-usercrumb-autowhatai-technologic-link\")/span[1]"
+    },
+    {
+      "description": "Step description unavailable",
+      "elementTag": "SPAN",
+      "elementText": "Settings",
+      "frameUrl": "https://github.com/AutoWhatAI-TechNoLogic",
+      "tabId": 634312229,
+      "targetText": "Settings",
+      "timestamp": 1762093235937,
+      "type": "click",
+      "url": "https://github.com/AutoWhatAI-TechNoLogic",
+      "xpath": "id(\"settings-tab\")/span[1]"
+    },
+    {
+      "description": "Step description unavailable",
+      "scrollX": 0,
+      "scrollY": 593,
+      "tabId": 634312229,
+      "targetId": 1,
+      "timestamp": 1762093239411,
+      "type": "scroll",
+      "url": "https://github.com/AutoWhatAI-TechNoLogic/r3c0rd-workflow"
+    },
+    {
+      "description": "Step description unavailable",
+      "elementTag": "SPAN",
+      "elementText": "Pages",
+      "frameUrl": "https://github.com/organizations/AutoWhatAI-TechNoLogic/settings/profile",
+      "tabId": 634312229,
+      "targetText": "Pages",
+      "timestamp": 1762093240260,
+      "type": "click",
+      "url": "https://github.com/organizations/AutoWhatAI-TechNoLogic/settings/profile",
+      "xpath": "id(\"pages-domain-protection-settings-item\")/span[2]"
+    },
+    {
+      "description": "Step description unavailable",
+      "scrollX": 0,
+      "scrollY": 0,
+      "tabId": 634312229,
+      "targetId": 1,
+      "timestamp": 1762093240859,
+      "type": "scroll",
+      "url": "https://github.com/AutoWhatAI-TechNoLogic/r3c0rd-workflow"
+    }
+  ],
+  "version": "1.0",
+  "workflow_analysis": "Recorded workflow with 6 steps. "
+}

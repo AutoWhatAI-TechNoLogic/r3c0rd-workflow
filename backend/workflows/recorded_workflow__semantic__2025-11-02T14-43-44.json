@@ -1,0 +1,62 @@
+{
+  "description": "This workflow guides the user to access the GitHub repository for AutoWhatAI-TechNoLogic, specifically directing them to view the 'workflow-logic' repository. By navigating to the 'Settings' section, the user can manage or configure settings related to that repository.",
+  "input_schema": [],
+  "name": "Recorded Workflow (Semantic)",
+  "steps": [
+    {
+      "description": "You are opening the AutoWhatAI-TechNoLogic page on GitHub to explore its projects and resources.",
+      "tabId": 634312229,
+      "timestamp": 1762094591771,
+      "type": "navigation",
+      "url": "https://github.com/AutoWhatAI-TechNoLogic"
+    },
+    {
+      "description": "You are selecting the \"Repositories\" option to view the available projects on the AutoWhatAI-TechNoLogic GitHub page.",
+      "elementTag": "SPAN",
+      "elementText": "Repositories",
+      "frameUrl": "https://github.com/AutoWhatAI-TechNoLogic",
+      "tabId": 634312229,
+      "targetText": "Repositories\n    2",
+      "timestamp": 1762094594966,
+      "type": "click",
+      "url": "https://github.com/AutoWhatAI-TechNoLogic",
+      "xpath": "id(\"repositories-tab\")/span[1]"
+    },
+    {
+      "description": "You are clicking on a section labeled \"workflow-logic\" to view related information on the AutoWhatAI-TechNoLogic GitHub page.",
+      "elementTag": "SPAN",
+      "elementText": "workflow-logic",
+      "frameUrl": "https://github.com/orgs/AutoWhatAI-TechNoLogic/repositories",
+      "tabId": 634312229,
+      "targetText": "workflow-logic",
+      "timestamp": 1762094598494,
+      "type": "click",
+      "url": "https://github.com/orgs/AutoWhatAI-TechNoLogic/repositories",
+      "xpath": "id(\":Rl1d:-list-view-node-:Rnl1d:\")/div[1]/h4[1]/a[1]/span[1]"
+    },
+    {
+      "description": "You're opening the Settings menu on the GitHub page to adjust your preferences.",
+      "elementTag": "SPAN",
+      "elementText": "Settings",
+      "frameUrl": "https://github.com/AutoWhatAI-TechNoLogic/workflow-logic",
+      "tabId": 634312229,
+      "targetText": "Settings",
+      "timestamp": 1762094602836,
+      "type": "click",
+      "url": "https://github.com/AutoWhatAI-TechNoLogic/workflow-logic",
+      "xpath": "id(\"settings-tab\")/span[1]"
+    },
+    {
+      "description": "You are moving down the page to see more content.",
+      "scrollX": 0,
+      "scrollY": 2423,
+      "tabId": 634312229,
+      "targetId": 1,
+      "timestamp": 1762094608389,
+      "type": "scroll",
+      "url": "https://github.com/AutoWhatAI-TechNoLogic"
+    }
+  ],
+  "version": "1.0",
+  "workflow_analysis": "Recorded workflow with 5 steps. "
+}
