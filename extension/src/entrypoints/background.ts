@@ -1,3 +1,7 @@
+//
+// background.ts
+//
+
 // import { eventWithTime } from 'rrweb'; // Type not directly available
 import { EventType, IncrementalSource } from "@rrweb/types";
 import {
@@ -35,10 +39,15 @@ export default defineBackground(() => {
   // Track recent user interactions to distinguish intentional vs side-effect navigation
   const recentUserInteractions: { [tabId: number]: number } = {}; // timestamp of last user interaction
 
-  let isRecordingEnabled = true; // Default to disabled (OFF)
+  let isRecordingEnabled = false; // Start as disabled (OFF)
   let lastWorkflowHash: string | null = null; // Cache for the last logged workflow hash
 
-  const PYTHON_SERVER_ENDPOINT = "http://127.0.0.1:7331/event";
+  // ✅ 1. NEW STATE: Store the final, AI-enhanced workflow after stopping
+  let finalEnhancedWorkflow: Workflow | null = null;
+
+  // ✅ 2. ENDPOINTS: Define separate endpoints for different servers
+  const EVENT_LOGGING_ENDPOINT = "http://127.0.0.1:7331/event";
+  const AI_ENHANCEMENT_ENDPOINT = "http://127.0.0.1:5000/enhance-workflow";
 
   // Hashing function using SubtleCrypto (SHA-256)
   async function calculateSHA256(str: string): Promise<string> {
@@ -55,18 +64,44 @@ export default defineBackground(() => {
   // Helper function to send data to the Python server
   async function sendEventToServer(eventData: HttpEvent) {
     try {
-      await fetch(PYTHON_SERVER_ENDPOINT, {
+      await fetch(EVENT_LOGGING_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(eventData),
       });
     } catch (error) {
       console.warn(
-        `Failed to send event to Python server at ${PYTHON_SERVER_ENDPOINT}:`,
+        `Failed to send event to Python server at ${EVENT_LOGGING_ENDPOINT}:`,
         error
       );
     }
   }
+
+  // ✅ 3. NEW FUNCTION: To call your Python backend for AI enhancement
+  async function enhanceWorkflowWithAI(workflowToEnhance: Workflow): Promise<Workflow> {
+    if (!workflowToEnhance?.steps?.length) {
+      return workflowToEnhance; // Don't enhance empty workflows
+    }
+    console.log("🚀 Sending workflow to Python AI server for enhancement...");
+    try {
+      const response = await fetch(AI_ENHANCEMENT_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(workflowToEnhance),
+      });
+      if (!response.ok) {
+        throw new Error(`AI server responded with status: ${response.status}`);
+      }
+      const enhancedWorkflow = await response.json();
+      console.log("✅ Received enhanced workflow from AI backend:", enhancedWorkflow);
+      return enhancedWorkflow;
+    } catch (err) {
+      console.error("❌ AI enhancement failed. Using original workflow as a fallback.", err);
+      // On failure, return the original workflow so the app doesn't break
+      return workflowToEnhance;
+    }
+  }
+
 
   // Function to generate step descriptions for semantic workflows
   function generateStepDescription(step: Step): string | null {
@@ -76,7 +111,7 @@ export default defineBackground(() => {
       case "input":
         return "Input element";
       case "navigation":
-        return `Navigate to ${step.url}`;
+        return `Maps to ${step.url}`;
       case "scroll":
         return null; // Scroll steps will have null description like in the example
       case "key_press":
@@ -645,21 +680,33 @@ export default defineBackground(() => {
 
     // --- Control Messages from Sidepanel ---
     else if (message.type === "GET_RECORDING_DATA") {
-      isAsync = true; // Indicate async response for sendResponse
+      isAsync = true;
       (async () => {
-        const workflowData = await broadcastWorkflowDataUpdate();
+        let workflowData;
+        let statusString;
 
-        const statusString = isRecordingEnabled
-          ? "recording"
-          : workflowData.steps.length > 0
-          ? "stopped"
-          : "idle";
-
+        // ✅ 4. MODIFIED LOGIC: Return cached enhanced workflow if available
+        if (!isRecordingEnabled && finalEnhancedWorkflow) {
+          console.log("Serving cached final enhanced workflow to sidepanel.");
+          workflowData = finalEnhancedWorkflow;
+          statusString = "stopped";
+        } else {
+          // Otherwise, generate the workflow on the fly (for active recording)
+          workflowData = await broadcastWorkflowDataUpdate();
+          statusString = isRecordingEnabled
+            ? "recording"
+            : workflowData.steps.length > 0
+            ? "stopped"
+            : "idle";
+        }
         sendResponse({ workflow: workflowData, recordingStatus: statusString });
       })();
-      return isAsync; // Crucial: return true to keep message channel open for async sendResponse
+      return isAsync;
     } else if (message.type === "START_RECORDING") {
       console.log("Received START_RECORDING request.");
+      // ✅ 5. MODIFIED LOGIC: Clear the final workflow on start
+      finalEnhancedWorkflow = null;
+
       // Clear previous data
       Object.keys(sessionLogs).forEach(
         (key) => delete sessionLogs[parseInt(key)]
@@ -686,21 +733,30 @@ export default defineBackground(() => {
       }
       sendResponse({ status: "started" }); // Send simple confirmation
     } else if (message.type === "STOP_RECORDING") {
-      console.log("Received STOP_RECORDING request.");
-      if (isRecordingEnabled) {
-        isRecordingEnabled = false;
-        console.log("Recording status set to: false");
-        broadcastRecordingStatus(); // Inform content scripts and sidepanel
+      isAsync = true; // This process is now async due to AI enhancement
+      (async () => {
+        console.log("Received STOP_RECORDING request.");
+        if (isRecordingEnabled) {
+          isRecordingEnabled = false;
+          console.log("Recording status set to: false");
 
-        // Send recording stopped event to Python server
-        const eventToSend: HttpRecordingStoppedEvent = {
-          type: "RECORDING_STOPPED",
-          timestamp: Date.now(),
-          payload: { message: "Recording has stopped" },
-        };
-        sendEventToServer(eventToSend);
-      }
-      sendResponse({ status: "stopped" }); // Send simple confirmation
+          // ✅ 6. CORE LOGIC: Assemble, enhance, and cache the final workflow
+          const finalRawWorkflow = await broadcastWorkflowDataUpdate();
+          finalEnhancedWorkflow = await enhanceWorkflowWithAI(finalRawWorkflow);
+
+          broadcastRecordingStatus(); // Inform sidepanel that status is 'stopped'
+
+          // Send recording stopped event to the event logging server
+          const eventToSend: HttpRecordingStoppedEvent = {
+            type: "RECORDING_STOPPED",
+            timestamp: Date.now(),
+            payload: { message: "Recording has stopped" },
+          };
+          sendEventToServer(eventToSend);
+        }
+        sendResponse({ status: "stopped" });
+      })();
+      return isAsync;
     }
     // --- Add Extraction Step from Sidepanel ---
     else if (message.type === "ADD_EXTRACTION_STEP") {

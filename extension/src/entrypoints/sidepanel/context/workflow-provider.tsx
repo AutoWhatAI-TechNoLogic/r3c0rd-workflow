@@ -113,7 +113,11 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
 
     // Listener for status updates pushed from the background script
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const messageListener = (message: any, _sender: any, _sendResponse: any) => {
+    const messageListener = (
+      message: any,
+      _sender: any,
+      _sendResponse: any
+    ) => {
       console.log("Sidepanel received message:", message);
       if (message.type === "recording_status_updated") {
         console.log(

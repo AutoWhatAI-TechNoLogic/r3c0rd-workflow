@@ -9,43 +9,106 @@ export const StoppedView: React.FC = () => {
   const [workflowName, setWorkflowName] = useState("");
   const [workflowDescription, setWorkflowDescription] = useState("");
 
-  const downloadJson = (customName?: string, customDescription?: string) => {
-    if (!workflow) return;
+const downloadJson = async (customName?: string, customDescription?: string) => {
+  if (!workflow) return;
 
-    // Create enhanced workflow with user inputs
-    const enhancedWorkflow = {
+  try {
+    // Show loading state (add this to your component state if you want)
+    // setIsEnhancing(true);
+
+    // Create base workflow with user inputs
+    const baseWorkflow = {
       ...workflow,
       name: customName || workflow.name,
       description: customDescription || workflow.description,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       workflow_analysis: `Recorded workflow with ${workflow.steps?.length || 0} steps. ${workflow.steps?.some(s => (s as any).type === 'extract') ? 'Includes AI extraction steps for intelligent data gathering.' : ''}`
     };
+
+    // Send to Python backend for AI enhancement
+    const response = await fetch('http://localhost:5000/enhance-workflow', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(baseWorkflow)
+    });
+
+    let enhancedWorkflow;
+    
+    if (!response.ok) {
+      throw new Error(`Server error: ${response.status}`);
+    }
+
+    enhancedWorkflow = await response.json();
 
     // Sanitize workflow name for filename
     const safeName = enhancedWorkflow.name
       ? enhancedWorkflow.name.replace(/[^a-z0-9._-]/gi, "_").toLowerCase()
       : "workflow";
-
+      
     const blob = new Blob([JSON.stringify(enhancedWorkflow, null, 2)], {
       type: "application/json",
     });
+    
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
+    
     // Generate filename e.g., my_workflow_name_2023-10-27_10-30-00.json
     const timestamp = new Date()
       .toISOString()
       .replace(/[:.]/g, "-")
       .slice(0, 19);
-    // Use sanitized name instead of domain
+      
     a.download = `${safeName}_${timestamp}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  };
+    
+    // setIsEnhancing(false);
+    
+  } catch (error) {
+    console.error('Failed to enhance workflow:', error);
+    // setIsEnhancing(false);
+    
+    // Fallback: download without enhancement
+    const fallbackWorkflow = {
+      ...workflow,
+      name: customName || workflow.name,
+      description: customDescription || workflow.description,
+      workflow_analysis: `Recorded workflow with ${workflow.steps?.length || 0} steps. ${workflow.steps?.some(s => (s as any).type === 'extract') ? 'Includes AI extraction steps for intelligent data gathering.' : ''}`
+    };
+    
+    const safeName = fallbackWorkflow.name
+      ? fallbackWorkflow.name.replace(/[^a-z0-9._-]/gi, "_").toLowerCase()
+      : "workflow";
+      
+    const blob = new Blob([JSON.stringify(fallbackWorkflow, null, 2)], {
+      type: "application/json",
+    });
+    
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .slice(0, 19);
+      
+    a.download = `${safeName}_${timestamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    console.warn('Downloaded without AI descriptions due to error');
+  }
+};
 
   const handleQuickDownload = () => {
+    console.log("✅ Quick Download button click was registered!");
     downloadJson();
   };
 
