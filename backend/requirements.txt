@@ -1,5 +1,7 @@
-flask
-flask_cors
 openai
-playwright
+flask
+flask-cors
+pymongo
+python-dotenv
 webdriver-manager
+playwright
