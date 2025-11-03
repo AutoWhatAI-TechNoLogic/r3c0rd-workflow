@@ -78,7 +78,9 @@ export default defineBackground(() => {
   }
 
   // ✅ 3. NEW FUNCTION: To call your Python backend for AI enhancement
-  async function enhanceWorkflowWithAI(workflowToEnhance: Workflow): Promise<Workflow> {
+  async function enhanceWorkflowWithAI(
+    workflowToEnhance: Workflow
+  ): Promise<Workflow> {
     if (!workflowToEnhance?.steps?.length) {
       return workflowToEnhance; // Don't enhance empty workflows
     }
@@ -93,33 +95,18 @@ export default defineBackground(() => {
         throw new Error(`AI server responded with status: ${response.status}`);
       }
       const enhancedWorkflow = await response.json();
-      console.log("✅ Received enhanced workflow from AI backend:", enhancedWorkflow);
+      console.log(
+        "✅ Received enhanced workflow from AI backend:",
+        enhancedWorkflow
+      );
       return enhancedWorkflow;
     } catch (err) {
-      console.error("❌ AI enhancement failed. Using original workflow as a fallback.", err);
+      console.error(
+        "❌ AI enhancement failed. Using original workflow as a fallback.",
+        err
+      );
       // On failure, return the original workflow so the app doesn't break
       return workflowToEnhance;
-    }
-  }
-
-
-  // Function to generate step descriptions for semantic workflows
-  function generateStepDescription(step: Step): string | null {
-    switch (step.type) {
-      case "click":
-        return "Click element";
-      case "input":
-        return "Input element";
-      case "navigation":
-        return `Maps to ${step.url}`;
-      case "scroll":
-        return null; // Scroll steps will have null description like in the example
-      case "key_press":
-        return "Key press element";
-      case "extract":
-        return "Extract information with AI";
-      default:
-        return "Unknown action";
     }
   }
 
@@ -134,15 +121,17 @@ export default defineBackground(() => {
       .sort((a, b) => a.timestamp - b.timestamp); // Sort chronologically
 
     console.log(`🔄 Processing ${allSteps.length} steps for workflow update`);
-    const extractionSteps = allSteps.filter(s => s.type === 'extract');
-    console.log(`🤖 Found ${extractionSteps.length} extraction steps:`, extractionSteps);
+    const extractionSteps = allSteps.filter((s) => s.type === "extract");
+    console.log(
+      `🤖 Found ${extractionSteps.length} extraction steps:`,
+      extractionSteps
+    );
 
     // Convert steps to semantic format with proper descriptions
     const semanticSteps = allSteps.map((step) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const semanticStep: Record<string, any> = {
         ...step,
-        description: generateStepDescription(step),
       };
 
       // Remove internal fields that shouldn't be in the final workflow
@@ -177,12 +166,18 @@ export default defineBackground(() => {
       return semanticStep as Step;
     });
 
-    const semanticExtractionSteps = semanticSteps.filter(s => s.type === 'extract');
-    console.log(`✅ Final semantic steps include ${semanticExtractionSteps.length} extraction steps:`, semanticExtractionSteps);
+    const semanticExtractionSteps = semanticSteps.filter(
+      (s) => s.type === "extract"
+    );
+    console.log(
+      `✅ Final semantic steps include ${semanticExtractionSteps.length} extraction steps:`,
+      semanticExtractionSteps
+    );
 
     // Create the workflowData object for the Python server (semantic format)
     const semanticWorkflowData: Workflow = {
-      workflow_analysis: "Semantic version of recorded workflow. Uses visible text to identify elements instead of CSS selectors for improved reliability.",
+      workflow_analysis:
+        "Semantic version of recorded workflow. Uses visible text to identify elements instead of CSS selectors for improved reliability.",
       name: "Recorded Workflow (Semantic)",
       description: `Recorded on ${new Date().toLocaleString()}`,
       version: "1.0",
@@ -192,7 +187,8 @@ export default defineBackground(() => {
 
     // Create the workflowData object for the UI (with original targetText)
     const uiWorkflowData: Workflow = {
-      workflow_analysis: "Semantic version of recorded workflow. Uses visible text to identify elements instead of CSS selectors for improved reliability.",
+      workflow_analysis:
+        "Semantic version of recorded workflow. Uses visible text to identify elements instead of CSS selectors for improved reliability.",
       name: "Recorded Workflow (Semantic)",
       description: `Recorded on ${new Date().toLocaleString()}`,
       version: "1.0",
@@ -356,24 +352,26 @@ export default defineBackground(() => {
               elementText: clickEvent.elementText,
               screenshot: clickEvent.screenshot,
             };
-            
+
             // Prioritize target_text for semantic workflows, but include cssSelector for complex elements
             if (clickEvent.targetText && clickEvent.targetText.trim()) {
               step.targetText = clickEvent.targetText;
-              
+
               // For radio buttons, checkboxes, and complex interactive elements, also include cssSelector
-              if (clickEvent.cssSelector && 
-                  (clickEvent.cssSelector.includes('radio') || 
-                   clickEvent.cssSelector.includes('checkbox') ||
-                   clickEvent.cssSelector.includes('role="radio"') ||
-                   clickEvent.cssSelector.includes('role="checkbox"') ||
-                   clickEvent.elementTag.toLowerCase() === 'button')) {
+              if (
+                clickEvent.cssSelector &&
+                (clickEvent.cssSelector.includes("radio") ||
+                  clickEvent.cssSelector.includes("checkbox") ||
+                  clickEvent.cssSelector.includes('role="radio"') ||
+                  clickEvent.cssSelector.includes('role="checkbox"') ||
+                  clickEvent.elementTag.toLowerCase() === "button")
+              ) {
                 step.cssSelector = clickEvent.cssSelector;
               }
             } else if (clickEvent.cssSelector) {
               step.cssSelector = clickEvent.cssSelector;
             }
-            
+
             steps.push(step);
           } else {
             console.warn("Skipping incomplete CUSTOM_CLICK_EVENT:", clickEvent);
@@ -399,15 +397,16 @@ export default defineBackground(() => {
               lastStep.url === inputEvent.url &&
               lastStep.frameUrl === inputEvent.frameUrl && // Ensure frameUrls match if both exist
               lastStep.xpath === inputEvent.xpath &&
-              ((lastStep as InputStep).targetText === inputEvent.targetText || 
-               (lastStep as InputStep).cssSelector === inputEvent.cssSelector) &&
+              ((lastStep as InputStep).targetText === inputEvent.targetText ||
+                (lastStep as InputStep).cssSelector ===
+                  inputEvent.cssSelector) &&
               lastStep.elementTag === inputEvent.elementTag
             ) {
               // Update the last input step
               (lastStep as InputStep).value = inputEvent.value;
               lastStep.timestamp = inputEvent.timestamp; // Update to latest timestamp
               (lastStep as InputStep).screenshot = inputEvent.screenshot; // Update to latest screenshot
-              
+
               // Update semantic targeting if available
               if (inputEvent.targetText && inputEvent.targetText.trim()) {
                 (lastStep as InputStep).targetText = inputEvent.targetText;
@@ -426,23 +425,25 @@ export default defineBackground(() => {
                 value: inputEvent.value,
                 screenshot: inputEvent.screenshot,
               };
-              
+
               // Prioritize target_text for semantic workflows, but include cssSelector for complex elements
               if (inputEvent.targetText && inputEvent.targetText.trim()) {
                 newStep.targetText = inputEvent.targetText;
-                
+
                 // For radio buttons, checkboxes, and complex input elements, also include cssSelector
-                if (inputEvent.cssSelector && 
-                    (inputEvent.cssSelector.includes('radio') || 
-                     inputEvent.cssSelector.includes('checkbox') ||
-                     inputEvent.cssSelector.includes('role="radio"') ||
-                     inputEvent.cssSelector.includes('role="checkbox"'))) {
+                if (
+                  inputEvent.cssSelector &&
+                  (inputEvent.cssSelector.includes("radio") ||
+                    inputEvent.cssSelector.includes("checkbox") ||
+                    inputEvent.cssSelector.includes('role="radio"') ||
+                    inputEvent.cssSelector.includes('role="checkbox"'))
+                ) {
                   newStep.cssSelector = inputEvent.cssSelector;
                 }
               } else if (inputEvent.cssSelector) {
                 newStep.cssSelector = inputEvent.cssSelector;
               }
-              
+
               steps.push(newStep);
             }
           } else {
@@ -515,7 +516,11 @@ export default defineBackground(() => {
               };
               steps.push(newStep);
             }
-          } else if ((rrEvent.type === EventType.Meta || rrEvent.type === EventType.FullSnapshot) && rrEvent.data?.href) {
+          } else if (
+            (rrEvent.type === EventType.Meta ||
+              rrEvent.type === EventType.FullSnapshot) &&
+            rrEvent.data?.href
+          ) {
             // Handle rrweb meta and fullsnapshot events as navigation (filtering now happens at storage level)
             const metaData = rrEvent.data as { href: string };
             const step: NavigationStep = {
@@ -591,7 +596,10 @@ export default defineBackground(() => {
 
       // Function to store the event
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const storeEvent = (eventPayload: Record<string, any>, screenshotDataUrl?: string) => {
+      const storeEvent = (
+        eventPayload: Record<string, any>,
+        screenshotDataUrl?: string
+      ) => {
         if (!sessionLogs[tabId]) {
           sessionLogs[tabId] = [];
         }
@@ -608,30 +616,43 @@ export default defineBackground(() => {
         // Track user interactions for navigation filtering
         if (customEventTypes.includes(message.type)) {
           recentUserInteractions[tabId] = eventPayload.timestamp || Date.now();
-          console.log(`[NAV_FILTER] Tracked ${message.type} on tab ${tabId} at ${recentUserInteractions[tabId]}`);
+          console.log(
+            `[NAV_FILTER] Tracked ${message.type} on tab ${tabId} at ${recentUserInteractions[tabId]}`
+          );
         }
 
         // Log all rrweb events for debugging
         if (message.type === "RRWEB_EVENT") {
-          console.log(`[NAV_FILTER] RRWEB event type ${eventPayload.type} (Meta=${EventType.Meta})`, eventPayload.data);
+          console.log(
+            `[NAV_FILTER] RRWEB event type ${eventPayload.type} (Meta=${EventType.Meta})`,
+            eventPayload.data
+          );
         }
 
         // Filter out side-effect navigation from rrweb meta and fullsnapshot events
-        if (message.type === "RRWEB_EVENT" && 
-            (eventPayload.type === EventType.Meta || eventPayload.type === EventType.FullSnapshot) && 
-            eventPayload.data?.href) {
+        if (
+          message.type === "RRWEB_EVENT" &&
+          (eventPayload.type === EventType.Meta ||
+            eventPayload.type === EventType.FullSnapshot) &&
+          eventPayload.data?.href
+        ) {
           const lastUserInteraction = recentUserInteractions[tabId] || 0;
           const currentTime = eventPayload.timestamp || Date.now();
           const timeSinceLastInteraction = currentTime - lastUserInteraction;
-          
+
           // Check if this is the first event in the session (initial page load)
-          const isFirstEvent = !sessionLogs[tabId] || sessionLogs[tabId].length === 0;
-          
+          const isFirstEvent =
+            !sessionLogs[tabId] || sessionLogs[tabId].length === 0;
+
           // Only store navigation if it's the first event (initial page load) or no user interaction has happened
           if (lastUserInteraction === 0 || isFirstEvent) {
-            console.log(`[NAV_FILTER] STORING navigation: ${eventPayload.data.href} (lastInteraction: ${lastUserInteraction}, isFirst: ${isFirstEvent})`);
+            console.log(
+              `[NAV_FILTER] STORING navigation: ${eventPayload.data.href} (lastInteraction: ${lastUserInteraction}, isFirst: ${isFirstEvent})`
+            );
           } else {
-            console.log(`[NAV_FILTER] FILTERED navigation: ${eventPayload.data.href} (${timeSinceLastInteraction}ms after interaction - always filter post-interaction navigation)`);
+            console.log(
+              `[NAV_FILTER] FILTERED navigation: ${eventPayload.data.href} (${timeSinceLastInteraction}ms after interaction - always filter post-interaction navigation)`
+            );
             return; // Don't store this event
           }
         }
@@ -761,7 +782,7 @@ export default defineBackground(() => {
     // --- Add Extraction Step from Sidepanel ---
     else if (message.type === "ADD_EXTRACTION_STEP") {
       console.log("🤖 Received ADD_EXTRACTION_STEP request:", message.payload);
-      
+
       if (!isRecordingEnabled) {
         console.error("❌ Recording is not enabled");
         sendResponse({ status: "error", message: "Recording is not active" });
@@ -772,19 +793,25 @@ export default defineBackground(() => {
         // For sidepanel messages, we need to get the active tab
         // Since this is from sidepanel, sender.tab will be undefined
         // Let's use a direct approach with chrome.tabs.query but handle it synchronously
-        
+
         isAsync = true;
-        
+
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
           try {
             console.log("📋 Active tabs found:", tabs?.length || 0);
-            
+
             if (chrome.runtime.lastError) {
-              console.error("❌ Chrome tabs query error:", chrome.runtime.lastError);
-              sendResponse({ status: "error", message: "Chrome tabs query failed" });
+              console.error(
+                "❌ Chrome tabs query error:",
+                chrome.runtime.lastError
+              );
+              sendResponse({
+                status: "error",
+                message: "Chrome tabs query failed",
+              });
               return;
             }
-            
+
             if (!tabs || tabs.length === 0 || !tabs[0]?.id) {
               console.error("❌ No active tab found");
               sendResponse({ status: "error", message: "No active tab found" });
@@ -793,9 +820,9 @@ export default defineBackground(() => {
 
             const tabId = tabs[0].id;
             const tabUrl = tabs[0].url || "";
-            
+
             console.log("✅ Using tab ID:", tabId, "URL:", tabUrl);
-            
+
             const extractionStep: StoredExtractionEvent = {
               timestamp: message.payload.timestamp,
               tabId: tabId,
@@ -810,25 +837,29 @@ export default defineBackground(() => {
               console.log("🆕 Initializing sessionLogs for tab:", tabId);
               sessionLogs[tabId] = [];
             }
-            
+
             sessionLogs[tabId].push(extractionStep);
-            console.log("✅ Added extraction step to sessionLogs. Total events for tab:", sessionLogs[tabId].length);
-            
+            console.log(
+              "✅ Added extraction step to sessionLogs. Total events for tab:",
+              sessionLogs[tabId].length
+            );
+
             // Broadcast update (don't await to avoid blocking)
             broadcastWorkflowDataUpdate();
             console.log("✅ Broadcasted workflow update");
-            
+
             // Send success response
             sendResponse({ status: "added" });
-            
           } catch (error) {
             console.error("❌ Error in tabs.query callback:", error);
-            sendResponse({ status: "error", message: `Callback error: ${error}` });
+            sendResponse({
+              status: "error",
+              message: `Callback error: ${error}`,
+            });
           }
         });
-        
+
         return true; // Keep message channel open
-        
       } catch (error) {
         console.error("❌ Error setting up extraction step:", error);
         sendResponse({ status: "error", message: `Setup error: ${error}` });
