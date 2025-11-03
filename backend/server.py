@@ -2,12 +2,13 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from openai import OpenAI
 from pymongo import MongoClient
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
 import json
+from pinecone import Pinecone, ServerlessSpec
 
 # Load environment variables
 load_dotenv()
@@ -18,11 +19,16 @@ CORS(app)
 # Configuration
 class Config:
     OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+    PINECONE_API_KEY = os.getenv('PINECONE_API_KEY')
+    PINECONE_ENVIRONMENT = os.getenv('PINECONE_ENVIRONMENT', 'us-east-1')
+    PINECONE_INDEX_NAME = os.getenv('PINECONE_INDEX_NAME', 'workflow-embeddings')
     MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/')
     DB_NAME = os.getenv('MONGODB_DB_NAME', 'workflow_db')
     COLLECTION_NAME = os.getenv('MONGODB_COLLECTION', 'enhanced_workflows')
     MAX_WORKERS = 4
     MONGODB_TIMEOUT = 5000
+    EMBEDDING_MODEL = "text-embedding-3-small"
+    EMBEDDING_DIMENSION = 1536
 
 # Initialize clients
 openai_client = OpenAI(api_key=Config.OPENAI_API_KEY)
@@ -82,8 +88,234 @@ class MongoDBManager:
     def is_connected(self):
         return self._connected
 
-# Initialize MongoDB manager
+# Pinecone Manager
+class PineconeManager:
+    _instance = None
+    _pc = None
+    _index = None
+    _connected = False
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    def initialize(self):
+        """Initialize Pinecone connection"""
+        if self._pc is not None:
+            return
+        
+        try:
+            print("🔄 Initializing Pinecone connection...")
+            self._pc = Pinecone(api_key=Config.PINECONE_API_KEY)
+            
+            # Check if index exists, create if not
+            existing_indexes = [index.name for index in self._pc.list_indexes()]
+            
+            if Config.PINECONE_INDEX_NAME not in existing_indexes:
+                print(f"📝 Creating Pinecone index: {Config.PINECONE_INDEX_NAME}")
+                self._pc.create_index(
+                    name=Config.PINECONE_INDEX_NAME,
+                    dimension=Config.EMBEDDING_DIMENSION,
+                    metric='cosine',
+                    spec=ServerlessSpec(
+                        cloud='aws',
+                        region=Config.PINECONE_ENVIRONMENT
+                    )
+                )
+            
+            self._index = self._pc.Index(Config.PINECONE_INDEX_NAME)
+            self._connected = True
+            print("✅ Pinecone connection successful")
+        except Exception as e:
+            print(f"⚠️ Pinecone connection failed: {e}")
+            self._connected = False
+            self._index = None
+    
+    def get_index(self):
+        """Get Pinecone index"""
+        if not self._connected or self._index is None:
+            self.initialize()
+        return self._index
+    
+    @property
+    def is_connected(self):
+        return self._connected
+
+# Initialize managers
 db_manager = MongoDBManager()
+pinecone_manager = PineconeManager()
+
+def generate_contextual_content(workflow_data, mongodb_id):
+    """
+    Generate 500-1000 word contextual content about the workflow using LLM
+    """
+    steps = workflow_data.get('steps', [])
+    
+    # Prepare comprehensive workflow information
+    workflow_info = {
+        'name': workflow_data.get('name', 'Recorded Workflow'),
+        'description': workflow_data.get('description', ''),
+        'workflow_analysis': workflow_data.get('workflow_analysis', ''),
+        'step_count': len(steps),
+        'steps': []
+    }
+    
+    # Include detailed step information
+    for i, step in enumerate(steps, 1):
+        step_info = {
+            'step_number': i,
+            'type': step.get('type'),
+            'description': step.get('description', '')
+        }
+        
+        if step.get('type') == 'navigation':
+            step_info['url'] = step.get('url')
+        elif step.get('type') == 'click':
+            step_info['target'] = step.get('targetText') or step.get('elementText')
+        elif step.get('type') == 'input':
+            step_info['value'] = step.get('value')
+            step_info['field'] = step.get('targetText')
+        elif step.get('type') == 'extract':
+            step_info['extraction_goal'] = step.get('extractionGoal')
+        
+        workflow_info['steps'].append(step_info)
+    
+        prompt = f"""You are analyzing a browser automation workflow. Write a comprehensive 50-100 word plain text document about this workflow that would help someone understand and search for it.
+
+        Workflow Information:
+        Name: {workflow_info['name']}
+        Description: {workflow_info['description']}
+        Analysis: {workflow_info['workflow_analysis']}
+        Total Steps: {workflow_info['step_count']}
+
+        Steps:
+        {chr(10).join([f"Step {s['step_number']}: {s.get('description', '')} (Type: {s['type']})" for s in workflow_info['steps']])}
+
+        Write a detailed, flowing narrative (500-1000 words) covering:
+        - What this workflow does and its purpose
+        - The sequence of actions and why each step matters
+        - Common use cases and scenarios where this would be useful
+        - Technical aspects and patterns used
+        - Potential variations or extensions
+        - Key concepts and terminology
+
+        CRITICAL: Write ONLY in plain text paragraphs. DO NOT use:
+        - Markdown formatting (**, __, ##, etc.)
+        - Bullet points or numbered lists
+        - Special characters or symbols
+        - Section headers
+        - Any formatting whatsoever
+
+        Output should be continuous flowing text in natural paragraphs only."""
+
+    try:
+        print(f"🤖 Generating contextual content for workflow {mongodb_id}...")
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",  # gpt-5-nano doesn't exist, use gpt-4o-mini or gpt-3.5-turbo
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert technical writer specializing in browser automation. Write comprehensive, natural-flowing plain text content. Output ONLY plain text paragraphs with NO formatting, NO markdown, NO bullet points, NO numbered lists, and NO special characters."
+                },
+                {"role": "user", "content": prompt}
+            ],
+            timeout=60
+        )
+        
+        contextual_content = response.choices[0].message.content
+        word_count = len(contextual_content.split())
+        print(f"✅ Generated contextual content: {word_count} words")
+        
+        return contextual_content
+    
+    except Exception as e:
+        print(f"⚠️ Error generating contextual content: {e}")
+        # Fallback content
+        return f"""This is an automated browser workflow named {workflow_info['name']} containing {len(steps)} sequential steps. The workflow demonstrates browser automation patterns for accomplishing specific tasks through programmatic web interaction. It includes navigation between pages, user input simulation, element interactions, and data extraction operations. This type of workflow is commonly used for task automation, testing, data collection, and repetitive process optimization. The sequence of steps has been carefully designed to replicate human interactions while maintaining reliability and efficiency. Each step plays a crucial role in achieving the overall objective of the automation."""
+
+def generate_embedding(text):
+    """
+    Generate embedding for text using OpenAI's embedding model
+    """
+    try:
+        print(f"🔢 Generating embedding for text ({len(text)} chars)...")
+        response = openai_client.embeddings.create(
+            model=Config.EMBEDDING_MODEL,
+            input=text
+        )
+        embedding = response.data[0].embedding
+        print(f"✅ Embedding generated: {len(embedding)} dimensions")
+        return embedding
+    except Exception as e:
+        print(f"⚠️ Error generating embedding: {e}")
+        return None
+
+def store_in_pinecone(mongodb_id, contextual_content):
+    """
+    Store workflow embedding in Pinecone with minimal metadata
+    """
+    try:
+        index = pinecone_manager.get_index()
+        if index is None:
+            print("⚠️ Pinecone not available - skipping vector storage")
+            return False
+        
+        # Generate embedding
+        embedding = generate_embedding(contextual_content)
+        if embedding is None:
+            return False
+
+        # Minimal metadata - only MongoDB ID
+        metadata = {
+            'mongodb_id': mongodb_id,
+            'vectorized_at': datetime.now(timezone.utc).isoformat(),
+            'contextual_content': contextual_content
+        }
+        
+        # Upsert to Pinecone
+        print(f"📤 Storing vector in Pinecone with ID: {mongodb_id}")
+        index.upsert(
+            vectors=[
+                {
+                    'id': mongodb_id,
+                    'values': embedding,
+                    'metadata': metadata
+                }
+            ]
+        )
+        print(f"✅ Successfully stored in Pinecone: {mongodb_id}")
+        return True
+    
+    except Exception as e:
+        print(f"❌ Error storing in Pinecone: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def process_workflow_vectorization(workflow_data, mongodb_id):
+    """
+    Process workflow for vectorization: generate content, embed, and store in Pinecone
+    """
+    def process():
+        try:
+            print(f"🔄 Starting vectorization for workflow: {mongodb_id}")
+            
+            # Generate contextual content
+            contextual_content = generate_contextual_content(workflow_data, mongodb_id)
+            
+            # Store in Pinecone (only mongodb_id and contextual content)
+            success = store_in_pinecone(mongodb_id, contextual_content)
+            
+            return success
+        except Exception as e:
+            print(f"❌ Error in vectorization process: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    # Submit to thread pool
+    executor.submit(process)
 
 def save_workflow_async(workflow_data):
     """Save workflow to MongoDB asynchronously using thread pool"""
@@ -92,26 +324,31 @@ def save_workflow_async(workflow_data):
             collection = db_manager.get_collection()
             if collection is None:
                 print("⚠️ MongoDB not available - skipping save")
-                return False
+                return None
             
+            mongodb_id = str(uuid.uuid4())
             enhanced_workflow = {
-                '_id': str(uuid.uuid4()),
+                '_id': mongodb_id,
                 **workflow_data,
                 'metadata': {
-                    'enhanced_at': datetime.utcnow(),
+                    'enhanced_at': datetime.now(timezone.utc).isoformat(),
                     'step_count': len(workflow_data.get('steps', [])),
                     'version': '1.0'
                 }
             }
             
             collection.insert_one(enhanced_workflow)
-            print(f"✅ Workflow saved: {enhanced_workflow['_id']}")
-            return True
+            print(f"✅ Workflow saved to MongoDB: {mongodb_id}")
+            
+            # Trigger vectorization process
+            process_workflow_vectorization(workflow_data, mongodb_id)
+            
+            return mongodb_id
         except Exception as e:
             print(f"❌ Error saving to MongoDB: {e}")
-            return False
+            return None
     
-    executor.submit(save)
+    return executor.submit(save)
 
 def enhance_workflow_with_ai(workflow_data):
     """
@@ -205,7 +442,7 @@ Return ONLY valid JSON, no additional text."""
         ai_response = json.loads(content)
         
         workflow_analysis = ai_response.get('workflow_analysis', f"Automated workflow with {len(steps)} steps")
-        description = ai_response.get('description', f"Recorded on {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}")
+        description = ai_response.get('description', f"Recorded on {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
         step_descriptions = ai_response.get('step_descriptions', [])
         
         print(f"✅ AI enhancement successful")
@@ -257,7 +494,7 @@ def generate_fallback_descriptions(steps):
     
     return {
         'workflow_analysis': f"Automated browser workflow with {len(steps)} steps. The workflow includes navigation, user interactions, and data operations.",
-        'description': f"Recorded workflow containing {len(steps)} automated steps. Recorded on {datetime.utcnow().strftime('%Y-%m-%d')}.",
+        'description': f"Recorded workflow containing {len(steps)} automated steps. Recorded on {datetime.now(timezone.utc).strftime('%Y-%m-%d')}.",
         'step_descriptions': step_descriptions
     }
 
@@ -297,18 +534,72 @@ def enhance_workflow():
             'steps': enhanced_steps
         }
         
-        # Save asynchronously (non-blocking)
-        save_workflow_async(enhanced_workflow)
+        # Save asynchronously (non-blocking) - this will also trigger vectorization
+        future = save_workflow_async(enhanced_workflow)
         
         print(f"✅ Successfully enhanced workflow with {len(enhanced_steps)} steps")
+        print(f"🔄 Vectorization process queued")
         
         return jsonify({
             **enhanced_workflow,
-            'mongodb_status': 'queued'
+            'mongodb_status': 'queued',
+            'vectorization_status': 'queued'
         })
     
     except Exception as e:
         print(f"❌ Error in enhance_workflow: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/search-workflows', methods=['POST'])
+def search_workflows():
+    """Search workflows using semantic similarity"""
+    try:
+        data = request.get_json()
+        query = data.get('query', '')
+        top_k = min(data.get('top_k', 10), 50)
+        
+        if not query:
+            return jsonify({'error': 'No search query provided'}), 400
+        
+        # Generate embedding for search query
+        query_embedding = generate_embedding(query)
+        if query_embedding is None:
+            return jsonify({'error': 'Failed to generate query embedding'}), 500
+        
+        # Search in Pinecone
+        index = pinecone_manager.get_index()
+        if index is None:
+            return jsonify({'error': 'Pinecone not available'}), 503
+        
+        results = index.query(
+            vector=query_embedding,
+            top_k=top_k,
+            include_metadata=True
+        )
+        
+        # Fetch full workflow data from MongoDB
+        collection = db_manager.get_collection()
+        workflows = []
+        
+        for match in results.matches:
+            mongodb_id = match.metadata.get('mongodb_id')
+            if mongodb_id and collection:
+                workflow = collection.find_one({'_id': mongodb_id})
+                if workflow:
+                    workflow['_id'] = str(workflow['_id'])
+                    workflow['similarity_score'] = match.score
+                    workflows.append(workflow)
+        
+        return jsonify({
+            'query': query,
+            'results': workflows,
+            'count': len(workflows)
+        })
+    
+    except Exception as e:
+        print(f"❌ Error in search_workflows: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
@@ -319,8 +610,9 @@ def health_check():
     return jsonify({
         'status': 'healthy',
         'mongodb': 'connected' if db_manager.is_connected else 'disconnected',
+        'pinecone': 'connected' if pinecone_manager.is_connected else 'disconnected',
         'openai': 'configured' if Config.OPENAI_API_KEY else 'missing',
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.now(timezone.utc).isoformat()
     })
 
 @app.route('/workflows', methods=['GET'])
@@ -339,7 +631,7 @@ def get_workflows():
         # Efficient query with projection
         workflows = list(collection.find(
             {},
-            {'_id': 1, 'name': 1, 'description': 1, 'metadata': 1}
+            {'_id': 1, 'name': 1, 'description': 1, 'metadata': 1, 'vectorized': 1}
         ).skip(skip).limit(limit))
         
         # Convert ObjectId to string
@@ -384,6 +676,7 @@ def get_workflow(workflow_id):
 def initialize_connections():
     """Initialize connections on first request"""
     executor.submit(db_manager.initialize)
+    executor.submit(pinecone_manager.initialize)
 
 @app.teardown_appcontext
 def cleanup(error=None):
@@ -395,8 +688,10 @@ if __name__ == '__main__':
     print(f"📁 Database: {Config.DB_NAME}")
     print(f"📊 Collection: {Config.COLLECTION_NAME}")
     print(f"✅ OpenAI: {'Configured' if Config.OPENAI_API_KEY else 'Missing'}")
+    print(f"🌲 Pinecone: {'Configured' if Config.PINECONE_API_KEY else 'Missing'}")
     
-    # Initialize MongoDB in background
+    # Initialize connections in background
     executor.submit(db_manager.initialize)
+    executor.submit(pinecone_manager.initialize)
 
     app.run(host='127.0.0.1', debug=True, port=5000, threaded=True)
