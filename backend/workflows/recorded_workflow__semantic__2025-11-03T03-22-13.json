@@ -1,0 +1,78 @@
+{
+  "description": "The user is attempting to search for the \"OnePlus 11R\" smartphone on Amazon India and add it to their shopping cart for potential purchase. The workflow involves navigating to the site, searching for the product, and then selecting it to add to the cart.",
+  "input_schema": [],
+  "mongodb_status": "queued",
+  "name": "Recorded Workflow (Semantic)",
+  "steps": [
+    {
+      "description": "Navigate to https://www.amazon.in/ref=nav_logo",
+      "tabId": 634312805,
+      "timestamp": 1762140070763,
+      "type": "navigation",
+      "url": "https://www.amazon.in/ref=nav_logo"
+    },
+    {
+      "description": "Click on Search Amazon.in",
+      "elementTag": "INPUT",
+      "elementText": "",
+      "frameUrl": "https://www.amazon.in/ref=nav_logo",
+      "tabId": 634312805,
+      "targetText": "Search Amazon.in",
+      "timestamp": 1762140072554,
+      "type": "click",
+      "url": "https://www.amazon.in/ref=nav_logo",
+      "xpath": "id(\"twotabsearchtextbox\")"
+    },
+    {
+      "description": "Enter 'oneplus 11r' in Search Amazon.in",
+      "elementTag": "INPUT",
+      "frameUrl": "https://www.amazon.in/ref=nav_logo",
+      "tabId": 634312805,
+      "targetText": "Search Amazon.in",
+      "timestamp": 1762140075318,
+      "type": "input",
+      "url": "https://www.amazon.in/ref=nav_logo",
+      "value": "oneplus 11r",
+      "xpath": "id(\"twotabsearchtextbox\")"
+    },
+    {
+      "cssSelector": "input.nav-input.nav-progressive-attribute[type=\"text\"][id=\"twotabsearchtextbox\"][name=\"field-keywords\"][autocomplete=\"off\"][placeholder*=\"Search Amazon.in\"][aria-label*=\"Search Amazon.in\"][role=\"searchbox\"]",
+      "description": "Press Enter key",
+      "elementTag": "INPUT",
+      "frameUrl": "https://www.amazon.in/ref=nav_logo",
+      "key": "Enter",
+      "tabId": 634312805,
+      "timestamp": 1762140075407,
+      "type": "key_press",
+      "url": "https://www.amazon.in/ref=nav_logo",
+      "xpath": "id(\"twotabsearchtextbox\")"
+    },
+    {
+      "description": "Click on Go",
+      "elementTag": "INPUT",
+      "elementText": "",
+      "frameUrl": "https://www.amazon.in/ref=nav_logo",
+      "tabId": 634312805,
+      "targetText": "Go",
+      "timestamp": 1762140075422,
+      "type": "click",
+      "url": "https://www.amazon.in/ref=nav_logo",
+      "xpath": "id(\"nav-search-submit-button\")"
+    },
+    {
+      "cssSelector": "button.a-button-text[name=\"submit.addToCart\"][aria-label*=\"Add to cart\"][type=\"button\"][id=\"a-autoid-3-announce\"]",
+      "description": "Click on Add to cart",
+      "elementTag": "BUTTON",
+      "elementText": "Add to cart",
+      "frameUrl": "https://www.amazon.in/s?k=oneplus+11r&crid=DNFNUKF6APWE&sprefix=oneplus+11%2Caps%2C218&ref=nb_sb_noss_2",
+      "tabId": 634312805,
+      "targetText": "Add to cart",
+      "timestamp": 1762140078392,
+      "type": "click",
+      "url": "https://www.amazon.in/s?k=oneplus+11r&crid=DNFNUKF6APWE&sprefix=oneplus+11%2Caps%2C218&ref=nb_sb_noss_2",
+      "xpath": "id(\"a-autoid-3-announce\")"
+    }
+  ],
+  "version": "1.0",
+  "workflow_analysis": "Recorded workflow with 6 steps. "
+}

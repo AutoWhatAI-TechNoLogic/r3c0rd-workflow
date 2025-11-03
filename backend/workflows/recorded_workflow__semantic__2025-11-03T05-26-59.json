@@ -1,0 +1,42 @@
+{
+  "description": "This automation workflow navigates Amazon India's book section, simulates a user action to proceed with a search or filter operation, and culminates with adding a book to the cart. The main steps include opening the book search page, initiating the search, and selecting an item to add to the cart.",
+  "input_schema": [],
+  "mongodb_status": "queued",
+  "name": "Recorded Workflow (Semantic)",
+  "steps": [
+    {
+      "description": "Navigate to the Amazon India website's book section using a specific search query URL.",
+      "tabId": 634312805,
+      "timestamp": 1762147484047,
+      "type": "navigation",
+      "url": "https://www.amazon.in/s?k=books&ref=nb_sb_noss"
+    },
+    {
+      "description": "Click on the 'Go' button, potentially triggering a search or applying filters on the current page.",
+      "elementTag": "INPUT",
+      "elementText": "",
+      "frameUrl": "https://www.amazon.in/s?k=books&ref=nb_sb_noss",
+      "tabId": 634312805,
+      "targetText": "Go",
+      "timestamp": 1762147487863,
+      "type": "click",
+      "url": "https://www.amazon.in/s?k=books&ref=nb_sb_noss",
+      "xpath": "id(\"nav-search-submit-button\")"
+    },
+    {
+      "cssSelector": "button.a-button-text[name=\"submit.addToCart\"][aria-label*=\"Add to cart\"][type=\"button\"][id=\"a-autoid-1-announce\"]",
+      "description": "Click on the 'Add to cart' button for a pre-selected or default book item.",
+      "elementTag": "BUTTON",
+      "elementText": "Add to cart",
+      "frameUrl": "https://www.amazon.in/s?k=books&ref=nb_sb_noss",
+      "tabId": 634312805,
+      "targetText": "Add to cart",
+      "timestamp": 1762147490231,
+      "type": "click",
+      "url": "https://www.amazon.in/s?k=books&ref=nb_sb_noss",
+      "xpath": "id(\"a-autoid-1-announce\")"
+    }
+  ],
+  "version": "1.0",
+  "workflow_analysis": "Recorded workflow with 4 steps. "
+}
