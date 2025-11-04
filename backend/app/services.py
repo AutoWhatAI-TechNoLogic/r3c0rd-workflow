@@ -9,6 +9,7 @@ import json
 import logging
 import traceback
 import re
+from bs4 import BeautifulSoup
 
 # Initialize OpenAI client
 # This will fail if OPENAI_API_KEY is not in your .env file
@@ -18,6 +19,112 @@ except Exception as e:
     logging.critical(f"❌ FAILED TO INITIALIZE OPENAI CLIENT: {e}")
     logging.critical("   Please ensure OPENAI_API_KEY is set in your .env file.")
     raise
+
+# --- NEW: Text Extraction Feature ---
+
+def extract_data_with_llm(html_content: str, extraction_goal: str, source_url: str) -> dict:
+    """
+    Extract specific data from HTML content using LLM.
+    
+    Args:
+        html_content: Full HTML content of the page
+        extraction_goal: Description of what data to extract
+        source_url: URL of the source page
+    
+    Returns:
+        Dictionary containing extracted data in the format:
+        {"extracted_data": "content from the website"}
+    """
+    try:
+        # Clean and parse HTML to extract meaningful text
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Remove script and style elements
+        for script in soup(["script", "style", "nav", "footer", "header"]):
+            script.decompose()
+        
+        # Get text content
+        text_content = soup.get_text(separator='\n', strip=True)
+        
+        # Clean up whitespace
+        lines = (line.strip() for line in text_content.splitlines())
+        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+        cleaned_text = '\n'.join(chunk for chunk in chunks if chunk)
+        
+        # Limit text size to avoid token limits (keep first 15000 characters)
+        if len(cleaned_text) > 15000:
+            cleaned_text = cleaned_text[:15000] + "\n...[content truncated]"
+        
+        logging.info(f"🔍 Extracting data with goal: {extraction_goal}")
+        logging.info(f"📄 Cleaned text length: {len(cleaned_text)} characters")
+        
+        # Create prompt for LLM
+        prompt = f"""You are a precise data extraction assistant. Your task is to extract specific information from website content based on the user's request.
+
+SOURCE URL: {source_url}
+
+EXTRACTION GOAL: {extraction_goal}
+
+WEBSITE CONTENT:
+{cleaned_text}
+
+INSTRUCTIONS:
+1. Carefully read the website content above
+2. Extract ONLY the information that directly relates to the extraction goal
+3. Use ONLY text that appears in the website content - do not invent, paraphrase, or add information
+4. If the requested information is not found, return an empty string for that field
+5. Be precise and extract the exact text from the website
+6. Return your response as a JSON object
+
+RESPONSE FORMAT:
+{{
+    "extracted_data": "the exact text content from the website that matches the extraction goal"
+}}
+
+If multiple pieces of information are requested in the extraction goal, you may use multiple keys like:
+{{
+    "field_1": "extracted content 1",
+    "field_2": "extracted content 2"
+}}
+
+Extract the data now:"""
+
+        # Call OpenAI API
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "system", 
+                    "content": "You are a precise data extraction assistant. Extract only the exact information requested from the provided website content. Return results in valid JSON format. Never invent or paraphrase - only use text that appears in the source."
+                },
+                {
+                    "role": "user", 
+                    "content": prompt
+                }
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.1,  # Low temperature for precise extraction
+            timeout=60
+        )
+        
+        # Parse the response
+        content = response.choices[0].message.content
+        extracted_data = json.loads(content)
+        
+        logging.info(f"✅ Data extracted successfully")
+        logging.info(f"📊 Extracted fields: {list(extracted_data.keys())}")
+        
+        return extracted_data
+    
+    except json.JSONDecodeError as e:
+        logging.error(f"❌ Failed to parse LLM response as JSON: {e}")
+        return {"error": "Failed to parse extraction results", "raw_response": content if 'content' in locals() else "No response"}
+    
+    except Exception as e:
+        logging.error(f"❌ Error during data extraction: {e}")
+        traceback.print_exc()
+        return {"error": str(e)}
+
 
 # --- AI Enhancement Logic ---
 
@@ -132,6 +239,8 @@ def generate_fallback_descriptions(steps):
             value = step.get('value', '')
             target = step.get('targetText') or 'field'
             desc = f"Enter '{value}' in {target}"
+        elif step_type == 'extract':
+            desc = f"Extract data: {step.get('extractionGoal', 'information from page')}"
         else:
             desc = f"Perform {step_type} action"
         step_descriptions.append(desc)
@@ -356,4 +465,3 @@ def save_workflow_to_db(workflow_data):
         logging.error(f"❌ Error saving to MongoDB: {e}")
         traceback.print_exc()
         return None, None
-
