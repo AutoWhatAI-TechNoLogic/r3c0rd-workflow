@@ -5,3 +5,5 @@ pymongo
 python-dotenv
 webdriver-manager
 playwright
+pinecone
+pinecone-client
