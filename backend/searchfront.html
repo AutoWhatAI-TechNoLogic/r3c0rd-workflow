@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Workflow Search</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+      body {
+        font-family: "Inter", sans-serif;
+        background-color: #111827; /* Dark gray background */
+        color: #d1d5db; /* Light gray text */
+      }
+      .search-container {
+        transition: all 0.3s ease-in-out;
+      }
+      .card {
+        background-color: #1f2937; /* Lighter gray for cards */
+        border: 1px solid #374151;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+      .card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2),
+          0 4px 6px -2px rgba(0, 0, 0, 0.1);
+      }
+      .loader {
+        border: 4px solid #374151;
+        border-top: 4px solid #6366f1; /* Indigo */
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+      .run-btn:disabled {
+        background-color: #4b5563;
+        cursor: not-allowed;
+      }
+    </style>
+  </head>
+  <body class="antialiased">
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+      <!-- Search Bar Container -->
+      <div
+        id="search-container"
+        class="search-container flex flex-col items-center justify-center h-[80vh]"
+      >
+        <h1 class="text-5xl font-bold text-white mb-4">Workflow Search</h1>
+        <p class="text-lg text-gray-400 mb-8">
+          Find and run your automated workflows.
+        </p>
+        <div class="w-full max-w-xl relative">
+          <input
+            type="search"
+            id="search-input"
+            placeholder="Search for workflows (e.g., 'Google login', 'scrape prices', 'BTS')..."
+            class="w-full py-4 px-6 bg-[#1f2937] border border-gray-600 rounded-full text-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          />
+          <button
+            id="search-button"
+            class="absolute right-4 top-1/2 -translate-y-1/2 bg-indigo-600 text-white rounded-full p-2 hover:bg-indigo-700 transition-colors"
+            aria-label="Search"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Results Container -->
+      <div id="results-container" class="hidden">
+        <div id="loader" class="loader mx-auto my-12 hidden"></div>
+        <div id="no-results" class="text-center text-gray-400 my-12 hidden">
+          <p class="text-xl">No workflows found.</p>
+          <p>Try a different search query or add a new workflow.</p>
+        </div>
+        <div id="results-grid" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- Workflow cards will be injected here -->
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // --- NEW: Define base URL for the server ---
+      const API_BASE_URL = "http://127.0.0.1:5000";
+
+      const searchInput = document.getElementById("search-input");
+      const searchButton = document.getElementById("search-button");
+      const searchContainer = document.getElementById("search-container");
+      const resultsContainer = document.getElementById("results-container");
+      const resultsGrid = document.getElementById("results-grid");
+      const loader = document.getElementById("loader");
+      const noResults = document.getElementById("no-results");
+
+      searchButton.addEventListener("click", performSearch);
+      searchInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          performSearch();
+        }
+      });
+
+      async function performSearch() {
+        const query = searchInput.value;
+        if (!query) return;
+
+        console.log(`Searching for: ${query}`);
+
+        // Animate search bar to top
+        searchContainer.classList.remove("h-[80vh]", "justify-center");
+        searchContainer.classList.add("h-auto", "py-8");
+
+        // Show results section and loader
+        resultsContainer.classList.remove("hidden");
+        loader.classList.remove("hidden");
+        noResults.classList.add("hidden");
+        resultsGrid.innerHTML = ""; // Clear old results
+
+        try {
+          // --- UPDATED: Use full URL ---
+          const response = await fetch(`${API_BASE_URL}/search-workflows`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query: query, top_k: 20 }),
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const data = await response.json();
+          console.log("Received data:", data);
+
+          loader.classList.add("hidden");
+          displayWorkflows(data.results);
+        } catch (error) {
+          console.error("Error fetching search results:", error);
+          loader.classList.add("hidden");
+          noResults.classList.remove("hidden");
+          noResults.innerHTML = `<p class="text-xl text-red-400">Error: ${error.message}</p>`;
+        }
+      }
+
+      function displayWorkflows(workflows) {
+        if (!workflows || workflows.length === 0) {
+          noResults.classList.remove("hidden");
+          noResults.innerHTML = `<p class="text-xl">No workflows found.</p><p>Try a different search query.</p>`;
+          return;
+        }
+
+        resultsGrid.innerHTML = "";
+        workflows.forEach((workflow) => {
+          const card = createWorkflowCard(workflow);
+          resultsGrid.appendChild(card);
+        });
+      }
+
+      function createWorkflowCard(workflow) {
+        const card = document.createElement("div");
+        card.className = "card rounded-xl shadow-lg overflow-hidden p-6";
+
+        // Format scores
+        const semanticScore = (workflow.similarity_score * 100).toFixed(1);
+        const hybridScore = workflow.hybrid_score.toFixed(2);
+        const keywordScore = workflow.keyword_score.toFixed(2);
+
+        card.innerHTML = `
+                <div class="flex flex-col h-full">
+                    <h3 class="text-2xl font-bold text-white mb-2">${
+                      workflow.name || "Untitled Workflow"
+                    }</h3>
+                    <p class="text-gray-400 mb-4 flex-grow">${
+                      workflow.description || "No description provided."
+                    }</p>
+                    
+                    <div class="flex flex-wrap gap-2 mb-4 text-xs">
+                        <span class="bg-gray-700 text-gray-300 px-2 py-1 rounded-full" title="Hybrid Score">Hybrid: ${hybridScore}</span>
+                        <span class="bg-blue-900 text-blue-300 px-2 py-1 rounded-full" title="Semantic Score">Semantic: ${semanticScore}%</span>
+                        <span class="bg-green-900 text-green-300 px-2 py-1 rounded-full" title="Keyword Score">Keyword: ${keywordScore}</span>
+                        ${
+                          workflow.metadata &&
+                          workflow.metadata.version === "1.1 (healed)"
+                            ? '<span class="bg-purple-900 text-purple-300 px-2 py-1 rounded-full">Healed</span>'
+                            : ""
+                        }
+                    </div>
+
+                    <div class="mt-auto flex justify-between items-center pt-4 border-t border-gray-700">
+                        <span class="text-sm text-gray-500">
+                            ${
+                              workflow.metadata && workflow.metadata.enhanced_at
+                                ? new Date(
+                                    workflow.metadata.enhanced_at
+                                  ).toLocaleDateString()
+                                : ""
+                            }
+                        </span>
+                        
+                        <button 
+                            onclick="runWorkflow(this, '${workflow._id}')"
+                            data-requires-password="${
+                              workflow.requires_password || "false"
+                            }"
+                            class="run-btn bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-opacity-75">
+                            Run Workflow
+                        </button>
+                    </div>
+                </div>
+            `;
+        return card;
+      }
+
+      /**
+       * ===================================================================
+       * RUN WORKFLOW (MODIFIED FOR PASSWORD)
+       * ===================================================================
+       */
+      async function runWorkflow(button, workflowId) {
+        console.log(`Attempting to run workflow: ${workflowId}`);
+
+        const needsPassword = button.dataset.requiresPassword === "true";
+        let userPassword = null;
+
+        if (needsPassword) {
+          userPassword = window.prompt(
+            "This workflow requires a password.\n\nPlease enter it below:",
+            ""
+          );
+
+          if (userPassword === null) {
+            console.log("User cancelled password input. Aborting run.");
+            return; // Stop execution
+          }
+        }
+
+        const originalText = button.innerHTML;
+        button.innerHTML = `
+                <svg class="animate-spin h-5 w-5 text-white mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            `;
+        button.disabled = true;
+
+        try {
+          // --- UPDATED: Use full URL ---
+          const response = await fetch(`${API_BASE_URL}/run-workflow`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              workflow_id: workflowId,
+              password: userPassword,
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error(`Server error: ${response.statusText}`);
+          }
+
+          const result = await response.json();
+          console.log("Run command sent:", result);
+
+          // We just show "Running..." and don't re-enable the button,
+          // as the task is running visibly in another window.
+          button.innerHTML = "Running...";
+        } catch (error) {
+          console.error("Error triggering workflow:", error);
+          alert(`Error: ${error.message}`);
+          button.innerHTML = originalText;
+          button.disabled = false;
+        }
+      }
+    </script>
+  </body>
+</html>
