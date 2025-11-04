@@ -14,5 +14,5 @@ if __name__ == '__main__':
     logging.info(f"🌲 Pinecone: {'Configured' if Config.PINECONE_API_KEY else 'Missing'}")
     
     # --- CHANGED PORT TO 5001 ---
-    app.run(host='127.0.0.1', debug=True, port=5000, threaded=True)
+    app.run(host='127.0.0.1', debug=True, port=5001, threaded=True)
 

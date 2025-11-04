@@ -47,7 +47,7 @@ export default defineBackground(() => {
 
   // ✅ 2. ENDPOINTS: Define separate endpoints for different servers
   const EVENT_LOGGING_ENDPOINT = "http://127.0.0.1:7331/event";
-  const AI_ENHANCEMENT_ENDPOINT = "http://127.0.0.1:5000/enhance-workflow";
+  const AI_ENHANCEMENT_ENDPOINT = "http://127.0.0.1:5001/enhance-workflow";
 
   // Hashing function using SubtleCrypto (SHA-256)
   async function calculateSHA256(str: string): Promise<string> {
