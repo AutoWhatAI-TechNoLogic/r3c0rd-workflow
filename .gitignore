@@ -26,3 +26,6 @@ build/
 # OS-specific files
 .DS_Store
 Thumbs.db
+
+# cache
+__pycache__/
