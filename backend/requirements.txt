@@ -7,3 +7,4 @@ webdriver-manager
 playwright
 pinecone
 pinecone-client
+beautifulsoup4
