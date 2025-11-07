@@ -12,7 +12,7 @@ class Config:
     MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/')
     DB_NAME = os.getenv('MONGODB_DB_NAME', 'workflow_db')
     COLLECTION_NAME = os.getenv('MONGODB_COLLECTION', 'enhanced_workflows')
-    MAX_WORKERS = 4
+    MAX_WORKERS = 10
     MONGODB_TIMEOUT = 5000  # Server selection timeout
     EMBEDDING_MODEL = "text-embedding-3-small"
     EMBEDDING_DIMENSION = 1536
