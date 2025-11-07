@@ -1,183 +1,188 @@
-## r3c0rd-workflow
+# r3c0rd-workflow
 
-AI-assisted browser workflow recorder, search, and runner.
+AI-assisted browser workflow recorder, search engine, and runner. Record sessions from a browser extension, enrich them with LLMs, search with hybrid semantic + keyword ranking, and replay them with a self-healing Playwright executor.
 
-This project has two parts:
-- Backend: Python/Flask service for AI enhancement, storage, and hybrid search over recorded workflows, plus a Playwright-based runner.
-- Browser Extension: WXT + React sidepanel to record, view, and trigger workflows.
+---
 
+## Overview
 
-### Features
-- **Record and describe workflows**: Turn raw steps into human-readable names, descriptions, and per-step explanations using OpenAI.
-- **Store workflows**: Persist in MongoDB with optional vector embeddings in Pinecone for semantic search.
-- **Hybrid search**: Combine MongoDB keyword search with Pinecone semantic results and re-rank.
-- **Execute workflows**: Run recorded workflows via Playwright with support for dropdowns, scrolling, key presses, and LLM-powered data extraction steps.
-- **Password handling**: If a workflow requires a password, the backend runner accepts a user-supplied password securely at run-time.
+- **Recorder**: A WXT + React sidepanel captures rrweb events, converts them into semantic workflow steps, and streams updates through a background script.
+- **Enhancer + Store**: A Flask backend calls OpenAI to name, describe, and analyze workflows, then persists them in MongoDB and (optionally) Pinecone.
+- **Search**: Hybrid ranking combines MongoDB `$text` scores with Pinecone vector similarity, exposed through REST or a dark-theme search UI (`backend/searchfront.html`).
+- **Runner**: A Playwright executor in Python can replay workflows directly from MongoDB, heal failing steps with LLM prompts, and request run-time secrets like passwords.
 
+---
 
-### Repository layout
-- `backend/`: Flask app, services, vector DB integration, and CLI runner.
-- `extension/`: WXT (Web eXtension Toolkit) + React sidepanel and scripts.
+## System Highlights
 
+- **One-call AI enrichment** via `app/services.enhance_workflow_with_ai`, returning workflow titles, analyses, per-step copy, and password detection.
+- **Background vectorization** queues dense summaries, embeds them with `text-embedding-3-small`, and upserts into Pinecone through `app.utils.executor`.
+- **Hybrid search & re-rank** merges semantic matches with text scores, providing consistent ordering and score annotations for the search UI.
+- **Self-healing execution** retries failing steps up to five times, asking OpenAI for DOM-aware fixes, and saves healed workflows back to MongoDB.
+- **Granular recorder states** in the extension (`idle → recording → stopped`) keep the sidepanel reactive, while background polling ensures near-real-time updates.
 
-## Prerequisites
+---
+
+## Repository Layout
+
+- `backend/` – Flask service, Mongo/Pinecone integrations, AI workflow enrichment, Playwright runner, and Tailwind search page.
+- `extension/` – WXT extension with React sidepanel, background recorder, message bus types, and Tailwind styling.
+
+---
+
+## Requirements
+
 - Python 3.10+
 - Node.js 18+
 - MongoDB (local or Atlas)
-- Optional: Pinecone account (for semantic search), OpenAI API key
-- Optional (runner): Playwright and its browser binaries
+- OpenAI API key (required for enrichment/self-healing)
+- Optional: Pinecone account for semantic search
+- Optional: Playwright browsers (installed via `python -m playwright install`)
 
+---
 
-## Backend: Setup & Run
-1) Create a `.env` file in `backend/` with at least:
+## Environment Variables (`backend/.env`)
 
-```env
-OPENAI_API_KEY=your_key_here            # required for AI features
-PINECONE_API_KEY=your_key_here          # optional but recommended for semantic search
-PINECONE_ENVIRONMENT=us-east-1          # default provided
-PINECONE_INDEX_NAME=workflow-embeddings # default provided
-MONGODB_URI=mongodb://localhost:27017/  # or your Atlas URI
-MONGODB_DB_NAME=workflow_db             # default provided
-MONGODB_COLLECTION=enhanced_workflows   # default provided
-```
+| Variable               | Required | Default                      | Purpose                                                       |
+| ---------------------- | -------- | ---------------------------- | ------------------------------------------------------------- |
+| `OPENAI_API_KEY`       | ✅       | –                            | Enables OpenAI calls for enhancement, embeddings, and healing |
+| `PINECONE_API_KEY`     | ⚠️       | –                            | Needed for semantic search (skip to disable vector storage)   |
+| `PINECONE_ENVIRONMENT` | ⚠️       | `us-east-1`                  | Pinecone serverless region                                    |
+| `PINECONE_INDEX_NAME`  | ⚠️       | `workflow-embeddings`        | Pinecone index used for upserts/queries                       |
+| `MONGODB_URI`          | ✅       | `mongodb://localhost:27017/` | Connection string for Mongo                                   |
+| `MONGODB_DB_NAME`      | ✅       | `workflow_db`                | Database name                                                 |
+| `MONGODB_COLLECTION`   | ✅       | `enhanced_workflows`         | Collection for workflows                                      |
 
-2) Install dependencies and run the server:
+⚠️ = required for the feature; the backend will still boot without it.
+
+---
+
+## Quick Start
+
+1. **Backend**
+
+   ```bash
+   cd backend
+   python -m venv .venv && .\.venv\Scripts\activate
+   pip install -r requirements.txt
+   copy .env.example .env  # or create manually using the table above
+   python run.py
+   ```
+
+   - Serves REST API on `http://127.0.0.1:5001` with CORS enabled.
+   - Create a Mongo text index once for best keyword search results:
+     ```js
+     db.enhanced_workflows.createIndex({
+       name: "text",
+       description: "text",
+       "steps.description": "text",
+     });
+     ```
+
+2. **Extension**
+
+   ```bash
+   cd extension
+   npm install
+   ```
+
+   - Load the printed unpacked directory in `chrome://extensions` (Developer Mode).
+   - The sidepanel shows recorder state, events, and enrichment status coming from the backend.
+
+3. **(Optional) Search UI**
+   - Serve `backend/searchfront.html` (e.g., `python -m http.server` from `backend/`).
+   - Use the UI to issue hybrid searches and trigger runs via the REST API.
+
+---
+
+## Backend Services
+
+- Flask factory (`app/__init__.py`) wires routes, CORS, logging, and lazy Pinecone initialization.
+- ThreadPoolExecutor (`app/utils.py`) offloads vectorization and Playwright runs without blocking request threads.
+- Pinecone manager (`app/vector_db.py`) lazily creates indices and caches handles per process.
+- Mongo context manager (`app/db.py`) opens/closes clients per request to stay within shared-tier limits.
+- Workflow enrichment (`app/services.py`):
+  - `enhance_workflow_with_ai` – single OpenAI call produces name, description, analysis, per-step copy, password flag.
+  - `generate_contextual_content` – 150–300 word dense document for embeddings.
+  - `extract_data_with_llm` – optional HTML scraper for extraction steps.
+- Routes (`app/routes.py`):
+  - `POST /enhance-workflow` – validates input, merges AI response, persists to Mongo, queues vectorization.
+  - `POST /search-workflows` – runs semantic + keyword lookups in parallel, merges scores, and re-ranks.
+  - `GET /workflows` & `GET /workflows/<id>` – paginated listings and detail fetches.
+  - `POST /run-workflow` – schedules Playwright execution (with optional password).
+  - `GET /health` – surfaces backend, Mongo, Pinecone, and OpenAI status.
+
+### Running the API
 
 ```bash
 cd backend
-pip install -r requirements.txt
 python run.py
 ```
 
-- Server starts on `http://127.0.0.1:5001`.
-- CORS is enabled.
+Logs include database, Pinecone, and OpenAI configuration hints. Customize host/port in `run.py` if needed.
 
-3) (Optional) Ensure MongoDB text index for keyword search on your collection:
+---
 
-```js
-// In Mongo shell or driver, run once on the target collection:
-db.enhanced_workflows.createIndex({ name: "text", description: "text", "steps.description": "text" })
-```
+## Workflow Execution
 
+- **Async runner (`app/workflow_executor.py`)**
+  - Launches Chromium, replays steps, and can prompt OpenAI for DOM repairs if an action fails.
+  - Preserves healed workflows by updating MongoDB when retries succeed.
+  - Accepts passwords at run-time without storing them.
+  <!-- - **CLI runner (`workflow_runner.py`)**
+  ```bash
+  cd backend
+  pip install playwright
+  python -m playwright install
+  python workflow_runner.py workflows/example.json --keep-open
+  ```
+  Flags:
+  - `--dir` execute every JSON in a folder.
+  - `--headless` run without a visible browser.
+  - `--delay` control inter-step pauses. -->
 
-## Backend: API Endpoints
-Base URL: `http://127.0.0.1:5001`
+---
 
-- `POST /enhance-workflow`
-  - Body: `{ name?: string, steps: Step[] }`
-  - Response: Saved workflow with AI fields (`name`, `description`, `workflow_analysis`, `step_descriptions`, `requires_password`) and queue status for vectorization.
+## Browser Extension
 
-- `POST /search-workflows`
-  - Body: `{ query: string, top_k?: number }`
-  - Response: `{ query, results: Workflow[], count }` ranked by hybrid score (semantic + keyword).
+- Built with WXT, React 19, TypeScript, Tailwind, and rrweb.
+- Background script (`src/entrypoints/background.ts`):
+  - Hooks Chrome tab events and rrweb callbacks while recording.
+  - Normalizes events into `Step` objects, strips volatile fields, and hashes state to avoid redundant uploads.
+  - Sends semantic steps to the backend (`POST /enhance-workflow`) and keeps the UI copy for the sidepanel.
+  - Streams status updates (`recording`, `stopped`, `idle`) to all clients.
+  - Posts raw events to `EVENT_LOGGING_ENDPOINT` (`http://127.0.0.1:7331/event` by default). Provide a listener there or update the constant if unused.
+- Sidepanel (`src/entrypoints/sidepanel/`):
+  - `WorkflowProvider` polls the background page during recording and exposes helper actions (`startRecording`, `stopRecording`, `discardAndStartNew`).
+  - React views render loading/error states, current event timelines, and enriched metadata once available.
+- Scripts (`package.json`):
+  - `npm run dev`, `npm run dev:firefox`, `npm run build`, `npm run zip`, `npm run compile` (TypeScript check).
 
-- `GET /workflows`
-  - Query: `page?`, `limit?`
-  - Response: Paginated list of workflows with minimal fields.
+---
 
-- `GET /workflows/:id`
-  - Response: Full workflow document.
+## Search Frontend (HTML Prototype)
 
-- `POST /run-workflow`
-  - Body: `{ workflow_id: string, password?: string }`
-  - Behavior: Runs the workflow asynchronously using Playwright. If a password field is detected and a `password` is provided, it will be used instead of any recorded placeholder.
+`backend/searchfront.html` is a static Tailwind page for local debugging:
 
-- `GET /health`
-  - Response: Basic service and integration status (MongoDB, Pinecone, OpenAI).
+- Calls `POST /search-workflows` and renders hybrid scores and metadata tags.
+- Allows triggering `POST /run-workflow`, prompting for passwords when needed.
+- Serve the file with any static server (e.g., `python -m http.server 8000`) and open in your browser.
 
-
-## Workflow Runner (CLI)
-There are two runners in `backend/`:
-
-1) API-driven runner (used by the server): `app/workflow_executor.py`
-   - Accepts in-memory workflow objects and supports advanced features like LLM extraction and password handling.
-
-2) Standalone JSON runner: `workflow_runner.py`
-   - Use this to execute `.json` workflow files directly.
-
-Install Playwright (first-time only):
-
-```bash
-pip install playwright
-python -m playwright install
-```
-
-Run a specific workflow JSON:
-
-```bash
-cd backend
-python workflow_runner.py workflows/example.json --keep-open
-```
-
-Run all workflows in a directory:
-
-```bash
-python workflow_runner.py --dir ./workflows
-```
-
-Flags:
-- `--headless`: run without a visible browser
-- `--keep-open`: keep the browser open after completion
-- `--delay <seconds>`: delay between steps (default 1.0)
-
-
-## Browser Extension: Setup & Run
-The extension is built with WXT, Vite, TypeScript, React, and Tailwind.
-
-1) Install dependencies:
-
-```bash
-cd extension
-npm install
-```
-
-2) Start in development mode (Chrome):
-
-```bash
-npm run dev
-```
-
-3) Load the extension in your browser:
-- The dev command prints a path to an unpacked build.
-- In Chrome, open `chrome://extensions`, enable Developer Mode, click "Load unpacked", and select the printed directory.
-
-Scripts:
-- `npm run dev`: start dev server (Chromium by default)
-- `npm run dev:firefox`: dev for Firefox
-- `npm run build`: production build
-- `npm run zip`: zip the build for submission
-
-
-## Architecture & Data Flow
-- The extension records user actions and can send workflow data to the backend.
-- `POST /enhance-workflow` enriches the workflow using OpenAI and stores it in MongoDB.
-- A background task generates a dense text representation, embeds it with OpenAI, and stores it in Pinecone.
-- `POST /search-workflows` performs hybrid search (MongoDB text + Pinecone vector) and re-ranks.
-- Workflows can be executed through the API (`/run-workflow`) or via the standalone runner.
-
-Key backend modules:
-- `app/services.py`: AI enhancement, extraction, embedding, vectorization, and Mongo persistence.
-- `app/routes.py`: Flask routes (enhancement, search, listing, run, health).
-- `app/vector_db.py`: Pinecone manager (connect/create index, upsert/query support).
-- `app/db.py`: MongoDB context manager optimized for shared/free tiers.
-- `app/workflow_executor.py`: Playwright executor with dropdown handling, input rules, and LLM extraction UI.
-
+---
 
 ## Troubleshooting
-- "OpenAI client failed to initialize": ensure `OPENAI_API_KEY` is in `backend/.env`.
-- Pinecone warnings: the app works without Pinecone; only semantic search is degraded.
-- MongoDB `$text` search returns no results: confirm you created a text index on fields you care about.
-- Playwright errors: run `python -m playwright install` and ensure Chrome/Chromium is available.
-- CORS during extension dev: backend has CORS enabled; ensure you’re hitting `http://127.0.0.1:5001`.
 
+- **OpenAI errors** – Verify `OPENAI_API_KEY`; the server refuses to boot without it.
+- **Missing Pinecone** – Vector search gracefully skips; only keyword ranking remains.
+- **Mongo timeouts** – Update `MONGODB_URI` or ensure the Atlas IP allow list includes your machine.
+- **Playwright not installed** – Run `pip install playwright && python -m playwright install`.
+- **Extension CORS** – Backend enables CORS for local dev; double-check you’re hitting `127.0.0.1:5001`.
+- **Event logging server** – If you don’t need raw event archives, leave the endpoint unreachable or change it in `background.ts`.
 
-## Contributing & License
-- PRs welcome. Keep code readable, typed where relevant, and avoid deep nesting.
-- Make sure to update the README if you add endpoints or flags.
-- License: Add your preferred license; if none provided, treat as All Rights Reserved by default.
+---
 
+## Contributing & Next Steps
 
-## Quick Start (TL;DR)
-- Backend: set `backend/.env`, `pip install -r backend/requirements.txt`, `python backend/run.py`.
-- Extension: `cd extension && npm i && npm run dev`, then load unpacked in your browser.
-- Enhance via API: `POST /enhance-workflow` with steps; search via `POST /search-workflows`; run via `POST /run-workflow`.
+- Add tests (Playwright) for new features where possible.
+- License defaults to “all rights reserved” until specified; clarify before distributing.
+<!-- - Document new routes, recorder states, or runner flags here when you extend the system. -->
