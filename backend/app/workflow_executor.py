@@ -33,6 +33,9 @@ except ImportError:
 
 class PlaywrightWorkflowExecutor:
     
+    # Max HTML characters to send to the AI
+    MAX_HTML_FOR_PROMPT = 150000 
+
     def __init__(self, headless: bool = False, keep_open: bool = False, mongodb_id: str = None, password: Optional[str] = None):
         """
         Initialize the workflow executor with Playwright
@@ -42,7 +45,7 @@ class PlaywrightWorkflowExecutor:
             keep_open: Keep browser open after workflow completion
             mongodb_id: The ID of the workflow in MongoDB (for saving fixes)
             password: The real password provided by the user (if any)
-        """
+        """ 
         self.playwright: Optional[Playwright] = None
         self.browser: Optional[Browser] = None
         self.page: Optional[Page] = None
@@ -131,8 +134,8 @@ class PlaywrightWorkflowExecutor:
                 print(f"\n{'='*20} 🚀 ATTEMPT {attempt}/{self.MAX_HEAL_ATTEMPTS} {'='*20}")
             print(f"🎯 Executing workflow: {current_workflow_json.get('name', workflow_name)}")
             
-            # Try to run the entire workflow
-            success, failed_step_index, error_message = self._run_workflow_steps(current_workflow_json)
+            # Try to run the entire workflow. It now returns only HTML on failure.
+            success, failed_step_index, error_message, page_html = self._run_workflow_steps(current_workflow_json)
             
             if success:
                 print(f"\n✅ Workflow '{current_workflow_json.get('name', workflow_name)}' completed successfully!")
@@ -153,19 +156,25 @@ class PlaywrightWorkflowExecutor:
             if attempt < self.MAX_HEAL_ATTEMPTS:
                 print(f"\n🩹 Workflow failed. Attempting self-healing (Attempt {attempt})...")
                 
-                # Get the specific step that failed
-                failed_step_json = current_workflow_json['steps'][failed_step_index]
-                
-                print(f"   Failed Step: {failed_step_json.get('description', 'N/A')}")
+                # --- MODIFICATION START ---
+                # Pass the *entire workflow* and the *index* of the failed step
+                print(f"   Failed Step Index: {failed_step_index}")
                 print(f"   Error: {error_message}")
                 
-                # Send *only* the failed step to the AI
-                healed_step_json = self._request_ai_heal(failed_step_json, error_message)
+                healed_workflow_json = self._request_ai_heal(
+                    current_workflow_json,  # Pass the whole workflow
+                    failed_step_index,      # Pass the index that failed
+                    error_message, 
+                    page_html
+                )
+                # --- MODIFICATION END ---
                 
-                if healed_step_json:
+                if healed_workflow_json:
                     print("🤖 AI provided a potential fix. Retrying...")
-                    # Surgically replace *only* the broken step
-                    current_workflow_json['steps'][failed_step_index] = healed_step_json
+                    # --- MODIFICATION START ---
+                    # Replace the entire workflow with the healed version
+                    current_workflow_json = healed_workflow_json
+                    # --- MODIFICATION END ---
                 else:
                     print("❌ AI could not provide a fix. Aborting.")
                     break
@@ -181,7 +190,7 @@ class PlaywrightWorkflowExecutor:
     def _run_workflow_steps(self, workflow_data: Dict[str, Any]):
         """
         Internal function to run workflow steps.
-        Returns (success, failed_step_index, error_message)
+        Returns (success, failed_step_index, error_message, page_html)
         """
         steps = workflow_data.get('steps', [])
         total_steps = len(steps)
@@ -197,62 +206,91 @@ class PlaywrightWorkflowExecutor:
             except Exception as e:
                 print(f"    ❌ ERROR on step {i}: {str(e)}")
                 traceback.print_exc(limit=2)
-                # Return failure status and the data needed for healing
-                # We return i-1 because step index is 1-based, list index is 0-based
-                return False, i-1, str(e) 
                 
-        return True, None, None
+                # On failure, capture the HTML content
+                page_html = ""
+                try:
+                    page_html = self.page.content()
+                    print(f"    📄 Captured HTML ({len(page_html)} chars) for healing.")
+                except Exception as capture_e:
+                    print(f"    ⚠️  Could not capture page HTML for healing: {capture_e}")
+
+                # Return failure status and all data needed for healing
+                # We return i-1 because step index is 1-based, list index is 0-based
+                return False, i-1, str(e), page_html
+                
+        # Return success state with None for error data
+        return True, None, None, None
     
-    def _request_ai_heal(self, failed_step: Dict[str, Any], error_message: str):
+    # --- MODIFICATION START ---
+    # This function is completely rewritten to be "proactive"
+    def _request_ai_heal(self, entire_workflow: Dict[str, Any], failed_step_index: int, error_message: str, page_html: str):
         """
-        Send *only* the failed step to OpenAI and ask for a fix.
+        Send the entire workflow, failed step index, error, and page HTML to OpenAI for a fix.
+        The AI will attempt to fix the failed step and any subsequent steps that are similar.
+        It will also update the descriptions of any steps it changes.
         """
         if not self.openai_client:
             return None
+        
+        if not page_html:
+            print("   -> No HTML captured. Cannot attempt healing.")
+            return None
             
         try:
-            # --- THIS IS THE SMARTER, SURGICAL AI PROMPT ---
-            prompt = f"""You are an expert Playwright automation engineer. A single workflow step has failed. Your task is to fix it.
+            # Truncate HTML to avoid excessive token usage
+            if len(page_html) > self.MAX_HTML_FOR_PROMPT:
+                print(f"   -> Page HTML is too large ({len(page_html)} chars). Truncating to {self.MAX_HTML_FOR_PROMPT} chars.")
+                page_html = page_html[:self.MAX_HTML_FOR_PROMPT] + "\n... [HTML TRUNCATED] ..."
 
-Analyze the failed step JSON and the error message.
-Return a *complete, new JSON* for *only this single step* with the fix applied.
-The fix will likely involve correcting the 'xpath' or 'cssSelector' for the failed step.
+            system_prompt = "You are an expert Playwright automation engineer. Your task is to fix a broken workflow. You will return only the complete, corrected JSON for the *entire workflow*. Do not add any extra explanations."
 
-ERROR ANALYSIS:
-1.  **Try to find a better selector:** Look at the 'targetText', 'elementText', or 'placeholder' in the failed step. Suggest a robust text-based or role-based selector. For example, change a brittle XPath to:
-    `"xpath": "//*[text()='Submit Form']"` or
-    `"cssSelector": "button:has-text('Submit Form')"`
+            # Get the failed step for context
+            failed_step_json = entire_workflow.get('steps', [])[failed_step_index]
 
-2.  **Handle missing text:** If the failed step is for an input field with NO 'targetText' (like the user's test case), the old selector (e.g., `id("old_id")`) failed. Your *only* option is to create an ordinal selector.
-    For example:
-    - If it's the *first* input on the page, a good fix is: `"cssSelector": "input[type='text']:nth-of-type(1)"`
-    - If it's the *second* password input, a good fix is: `"cssSelector": "input[type='password']:nth-of-type(2)"`
-    Analyze the *context* of the step (e.g., its original `xpath`) to make an intelligent guess.
+            user_prompt_text = f"""A Playwright workflow has failed.
+You are given the *entire workflow JSON*, the *index* of the failed step, the *error message*, and the *page HTML* at the time of failure.
 
-RULES:
-- Return ONLY the complete, valid JSON for *this single step*.
-- Do not add any new, extra keys.
-- Do not explain your changes. Just return the fixed JSON.
+YOUR TASK:
+1.  **Analyze Failure:** Analyze the `failed_step_index` ({failed_step_index}) and its `error_message` against the `page_html` to find the root cause (e.g., a changed ID, class, or text).
+2.  **Fix Primary Step:** Correct the step at `failed_step_index` in the `steps` list.
+3.  **PROACTIVE HEALING (IMPORTANT):** After fixing the primary step, *proactively* inspect all *subsequent* steps (from index {failed_step_index + 1} onwards). If any of these steps use similar selectors or logic that are *also* broken (based on your analysis of the `page_html`), fix them as well.
+4.  **UPDATE DESCRIPTIONS (REQUIRED):** For *every* step you modify (the primary failed step or any proactive fixes), you **MUST** update its `description` field to be human-readable and accurately reflect the *new* selector, text, or logic.
+5.  **Return Full JSON:** Return the *complete, entire workflow JSON* with all your fixes applied.
 
 ---
-THE FAILED STEP JSON:
-{json.dumps(failed_step, indent=2)}
+FAILED STEP INDEX:
+{failed_step_index}
+
+FAILED STEP JSON (for context):
+{json.dumps(failed_step_json, indent=2)}
 
 ---
-THE ERROR MESSAGE:
+ERROR MESSAGE:
 {error_message}
 
 ---
-Return the complete, corrected JSON for the *single step* now:
+CURRENT PAGE HTML (Truncated):
+{page_html}
+---
+ENTIRE WORKFLOW JSON (to be fixed and returned):
+{json.dumps(entire_workflow, indent=2)}
+---
+
+Return the complete, corrected *entire workflow JSON* now:
 """
-            print("   -> Sending failed step to AI for analysis...")
+
+            # Build the message payload (text only)
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt_text}
+            ]
+
+            print("   -> Sending entire workflow and HTML to AI for proactive healing...")
             response = self.openai_client.chat.completions.create(
-                model="gpt-4o", # Use a smart model
-                messages=[
-                    {"role": "system", "content": "You are an expert Playwright automation engineer. Your task is to fix a broken workflow step. You will return only the complete, corrected JSON for that single step."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.2 # Be precise
+                model="gpt-4o",  # Use a smart model for this reasoning
+                messages=messages,
+                temperature=0.1  # Be precise
             )
             
             healed_json_str = response.choices[0].message.content
@@ -265,52 +303,59 @@ Return the complete, corrected JSON for the *single step* now:
                 
             healed_json = json.loads(match.group(0))
             
-            # Simple validation: check if it's a dict and has a 'type'
-            if isinstance(healed_json, dict) and 'type' in healed_json:
-                print("   -> AI returned a valid JSON fix for the step.")
+            # Simple validation: check if it's a dict and has a 'steps' list
+            if isinstance(healed_json, dict) and isinstance(healed_json.get('steps'), list):
+                print("   -> AI returned a valid, complete, healed workflow.")
                 return healed_json
             else:
-                print("   -> AI returned invalid JSON structure for the step.")
+                print("   -> AI returned invalid JSON structure for the workflow.")
                 return None
                 
         except Exception as e:
             print(f"   -> ❌ Error during AI self-healing request: {e}")
             return None
+    # --- MODIFICATION END ---
 
     def _save_healed_workflow(self, healed_workflow_json: Dict[str, Any]):
-        """
-        Save the successfully healed workflow back to MongoDB.
-        """
-        if not self.mongodb_id or not MONGODB_AVAILABLE:
-            print("   -> (Warning) No MongoDB ID provided or DB not available. Cannot save healed workflow.")
-            return
-            
-        try:
-            # This function must be defined if MONGODB_AVAILABLE is True
-            with get_db_collection() as collection:
-                if collection is None:
-                    print("   -> (Error) Could not connect to MongoDB to save heal.")
-                    return
+            """
+            Save the successfully healed workflow back to MongoDB.
+            """
+            if not self.mongodb_id or not MONGODB_AVAILABLE:
+                print("   -> (Warning) No MongoDB ID provided or DB not available. Cannot save healed workflow.")
+                return
+                
+            try:
+                # This function must be defined if MONGODB_AVAILABLE is True
+                with get_db_collection() as collection:
+                    if collection is None:
+                        print("   -> (Error) Could not connect to MongoDB to save heal.")
+                        return
 
-                # Update the original document, replacing 'steps' and 'metadata'
-                # and other top-level AI fields
-                collection.update_one(
-                    {'_id': self.mongodb_id},
-                    {
-                        '$set': {
-                            'steps': healed_workflow_json.get('steps', []),
-                            'name': healed_workflow_json.get('name', 'Healed Workflow'),
-                            'description': healed_workflow_json.get('description', ''),
-                            'workflow_analysis': healed_workflow_json.get('workflow_analysis', ''),
-                            'requires_password': healed_workflow_json.get('requires_password', False),
-                            'metadata.version': '1.1 (healed)',
-                            'metadata.healed_at': time.strftime('%Y-%m-%dT%H:%M:%SZ')
+                    # Update the original document, replacing 'steps' and 'metadata'
+                    # and other top-level AI fields
+                    collection.update_one(
+                        {'_id': self.mongodb_id},
+                        {
+                            '$set': {
+                                'steps': healed_workflow_json.get('steps', []),
+                                'name': healed_workflow_json.get('name', 'Healed Workflow'),
+                                'description': healed_workflow_json.get('description', ''),
+                                'workflow_analysis': healed_workflow_json.get('workflow_analysis', ''),
+                                'requires_password': healed_workflow_json.get('requires_password', False),
+                                
+                                # --- MODIFICATION START ---
+                                # Set back to the *exact* version string from your original code
+                                # to ensure frontend compatibility.
+                                'metadata.version': '1.1 (healed)', 
+                                # --- MODIFICATION END ---
+                                
+                                'metadata.healed_at': time.strftime('%Y-%m-%dT%H:%M:%SZ')
+                            }
                         }
-                    }
-                )
-                print(f"   -> ✅ Successfully saved healed workflow {self.mongodb_id} to DB.")
-        except Exception as e:
-            print(f"   -> ❌ FAILED to save healed workflow to DB: {e}")
+                    )
+                    print(f"   -> ✅ Successfully saved healed workflow {self.mongodb_id} to DB.")
+            except Exception as e:
+                print(f"   -> ❌ FAILED to save healed workflow to DB: {e}")
 
     def wait_for_user_close(self):
         """Wait for user to manually close the browser"""
@@ -348,20 +393,19 @@ Return the complete, corrected JSON for the *single step* now:
             self.execute_key_press(step)
         elif step_type == 'scroll':
             self.execute_scroll(step)
-        # --- START OF ADDED CODE ---
         elif step_type == 'extract':
             self.execute_extraction(step)
-        # --- END OF ADDED CODE ---
         else:
             print(f"    ⚠ Unknown step type: {step_type}")
         
-        time.sleep(0.5) # Brief pause between steps
+        self.page.wait_for_timeout(500) # Brief pause for UI to settle
     
     def execute_navigation(self, step: Dict[str, Any]):
         """Execute navigation step"""
         url = step.get('url', '')
         if url:
-            self.page.goto(url, wait_until="networkidle", timeout=30000)
+            timeout = step.get('timeout', 30000)
+            self.page.goto(url, wait_until="networkidle", timeout=timeout)
             print(f"    🌐 Navigated to: {url}")
         else:
             raise Exception(f"No URL provided for navigation step: {step.get('description')}")
@@ -371,7 +415,8 @@ Return the complete, corrected JSON for the *single step* now:
         # Pass "click" as the step_type
         element = self.find_element(step, step_type="click") 
         if element:
-            element.click(timeout=10000)
+            timeout = step.get('timeout', 10000)
+            element.click(timeout=timeout)
             print(f"    🖱️ Clicked element")
         else:
             raise Exception(f"Element not found for click: {step.get('description')}")
@@ -408,7 +453,8 @@ Return the complete, corrected JSON for the *single step* now:
                 return
         
         if element:
-            element.fill(value, timeout=10000)
+            timeout = step.get('timeout', 10000)
+            element.fill(value, timeout=timeout)
             print(f"    ⌨️ Input text: {masked_value}")
         else:
             raise Exception(f"Element not found for input: {step.get('description')}")
@@ -418,21 +464,22 @@ Return the complete, corrected JSON for the *single step* now:
         # Pass "input" as the step_type, as dropdowns are a form of input
         element = self.find_element(step, step_type="input") 
         value = step.get('value', '')
+        timeout = step.get('timeout', 10000)
         
         if element and value:
             element_tag = step.get('elementTag', '').upper()
             if element_tag == 'SELECT':
                 try:
-                    element.select_option(value, timeout=10000)
+                    element.select_option(value, timeout=timeout)
                     print(f"    📋 Selected dropdown option: {value}")
                 except Exception:
                     # Fallback by text
-                    element.select_option(label=value, timeout=10000)
+                    element.select_option(label=value, timeout=timeout)
                     print(f"    📋 Selected dropdown option (by label): {value}")
             else:
-                element.click(timeout=10000)
+                element.click(timeout=timeout)
                 option_locator = self.page.get_by_text(value).first
-                option_locator.wait_for(state="visible", timeout=5000)
+                option_locator.wait_for(state="visible", timeout=timeout)
                 option_locator.click()
                 print(f"    📋 Selected option: {value}")
         else:
@@ -444,7 +491,8 @@ Return the complete, corrected JSON for the *single step* now:
         element = self.find_element(step, step_type="input") 
         key = step.get('key', '')
         if element and key:
-            element.press(key, timeout=10000)
+            timeout = step.get('timeout', 10000)
+            element.press(key, timeout=timeout)
             print(f"    ⌨️ Pressed {key} key")
         else:
             raise Exception(f"Element not found for key press: {step.get('description')}")
@@ -455,8 +503,6 @@ Return the complete, corrected JSON for the *single step* now:
         scroll_y = step.get('scrollY', 0)
         self.page.evaluate(f"window.scrollTo({scroll_x}, {scroll_y})")
         print(f"    📜 Scrolled to position ({scroll_x}, {scroll_y})")
-
-    # --- START OF ADDED CODE ---
 
     def execute_extraction(self, step: Dict[str, Any]):
         """Execute extraction step using LLM"""
@@ -684,7 +730,7 @@ Return the complete, corrected JSON for the *single step* now:
         html += """
                         </div>
                         
-                        <div class="json-container">
+                        <div class.json-container">
                             <pre id="jsonData">""" + json_data + """</pre>
                         </div>
                         
@@ -715,14 +761,15 @@ Return the complete, corrected JSON for the *single step* now:
         """
         
         return html
-    
-    # --- END OF ADDED CODE ---
 
-    def find_element(self, step: Dict[str, Any], step_type: str, timeout_ms: int = 10000):
+    def find_element(self, step: Dict[str, Any], step_type: str):
         """
         Find element using a robust, multi-strategy approach.
         Uses different fallbacks based on the step_type ("input" or "click").
         """
+        # Get timeout from the step JSON, with a default of 10000ms
+        timeout_ms = step.get('timeout', 2000)
+
         element = None
         text_to_find = step.get('targetText') or step.get('elementText')
         placeholder_to_find = step.get('placeholder')
@@ -779,7 +826,6 @@ Return the complete, corrected JSON for the *single step* now:
         print(f"    ❌ FAILED: Could not find element for step: {step.get('description')}")
         return None
 
-    # --- THIS IS THE UPGRADED FUNCTION ---
     def find_element_playwright(self, locator_type: str, locator_value: str):
         """Find element using Playwright locator methods"""
         if locator_type == 'xpath':
