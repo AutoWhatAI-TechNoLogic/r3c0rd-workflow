@@ -1,6 +1,6 @@
 {
-  "name": "wxt-react-starter",
-  "description": "manifest.json description",
+  "name": "workflow-use recorder",
+  "description": "A browser extension that records user interactions on web pages and saves it as a JSON file.",
   "private": true,
   "version": "0.0.0",
   "type": "module",
