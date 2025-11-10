@@ -6,7 +6,7 @@ AI-assisted browser workflow recorder, search engine, and runner. Record session
 
 ## Overview
 
-- **Recorder**: A WXT + React sidepanel captures rrweb events, converts them into semantic workflow steps, and streams updates through a background script.
+- **Recorder**: A WXT + React sidepanel captures rrweb events, converts them into semantic workflow steps, and streams updates through a background script, taken from the open source project [workflow-use](https://github.com/browser-use/workflow-use)
 - **Enhancer + Store**: A Flask backend calls OpenAI to name, describe, and analyze workflows, then persists them in MongoDB and (optionally) Pinecone.
 - **Search**: Hybrid ranking combines MongoDB `$text` scores with Pinecone vector similarity, exposed through REST or a dark-theme search UI (`backend/searchfront.html`).
 - **Runner**: A Playwright executor in Python can replay workflows directly from MongoDB, heal failing steps with LLM prompts, and request run-time secrets like passwords.
@@ -186,3 +186,4 @@ Logs include database, Pinecone, and OpenAI configuration hints. Customize host/
 - Add tests (Playwright) for new features where possible.
 - License defaults to “all rights reserved” until specified; clarify before distributing.
 <!-- - Document new routes, recorder states, or runner flags here when you extend the system. -->
+
