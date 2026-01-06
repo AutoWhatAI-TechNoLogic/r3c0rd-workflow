@@ -250,7 +250,7 @@ def generate_fallback_descriptions(steps):
         'workflow_analysis': f"Automated browser workflow with {len(steps)} steps.",
         'description': f"Recorded workflow containing {len(steps)} automated steps.",
         'step_descriptions': step_descriptions,
-        'requires_password': False # Default to false on fallback
+        'requires_password': False
     }
 
 # --- Vectorization & Storage Logic ---
