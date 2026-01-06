@@ -17,7 +17,7 @@ def get_db_collection(collection_name=None):
         client = MongoClient(
             Config.MONGODB_URI,
             serverSelectionTimeoutMS=Config.MONGODB_TIMEOUT,
-            connectTimeoutMS=10000,  # Give 10s to connect
+            connectTimeoutMS=10000,
             socketTimeoutMS=30000
         )
         
