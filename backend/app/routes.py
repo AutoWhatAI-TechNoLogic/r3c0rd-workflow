@@ -30,7 +30,7 @@ def enhance_workflow():
         steps = workflow_data.get('steps', [])
         logging.info(f"📥 Received workflow with {len(steps)} steps")
         
-        # 1. Enhance with AI (now returns 'requires_password')
+        # 1. Enhance workflow with AI
         ai_enhancements = enhance_workflow_with_ai(workflow_data)
         
         # 2. Save to MongoDB (this function now handles applying descriptions)
